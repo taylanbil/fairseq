@@ -7,21 +7,21 @@
 # can be found in the PATENTS file in the same directory.
 
 from collections import namedtuple
-
-import torch
 import html
 import os
+
+import torch
 from sacremoses import MosesTokenizer, MosesDetokenizer
 from subword_nmt import apply_bpe
 
-from fairseq import checkpoint_utils, options, tasks, utils, file_utils
+from fairseq import checkpoint_utils, data_utils, options, tasks, utils
 
 Batch = namedtuple('Batch', 'ids src_tokens src_lengths')
 
 
 class Generator(object):
 
-    def __init__(self, task, models, args, src_bpe=None, bpe_symbol='@@ '):
+    def __init__(self, task, models, args, src_bpe=None, bpe_symbol='@@ ', moses=False):
         self.task = task
         self.models = models
         self.src_dict = task.source_dictionary
@@ -29,8 +29,6 @@ class Generator(object):
         self.src_bpe = src_bpe
         self.use_cuda = torch.cuda.is_available() and not args.cpu
         self.args = args
-
-        self.args.remove_bpe = bpe_symbol
 
         # optimize model for generation
         for model in self.models:
@@ -54,23 +52,39 @@ class Generator(object):
             *[model.max_positions() for model in models]
         )
 
-        if hasattr(args, 'source_lang'):
-            self.tokenizer = MosesTokenizer(lang=args.source_lang)
-        else:
-            self.tokenizer = MosesTokenizer()
+        self.in_transforms = []
+        self.out_transforms = []
+
+        if moses:
+            if hasattr(args, 'source_lang'):
+                tokenizer = MosesTokenizer(lang=args.source_lang)
+                detokenizer = MosesDetokenizer(lang=args.source_lang)
+            else:
+                tokenizer = MosesTokenizer()
+                detokenizer = MosesDetokenizer()
+            self.in_transforms.append(lambda s: tokenizer.tokenize(s, return_str=True))
+            self.out_transforms.append(lambda s: detokenizer.detokenize(s))
 
         if src_bpe is not None:
             bpe_parser = apply_bpe.create_parser()
             bpe_args = bpe_parser.parse_args(['--codes', self.src_bpe])
-            self.bpe = apply_bpe.BPE(bpe_args.codes, bpe_args.merges, bpe_args.separator, None, bpe_args.glossaries)
-        else:
-            self.bpe = None
+            bpe = apply_bpe.BPE(bpe_args.codes, bpe_args.merges, bpe_args.separator, None, bpe_args.glossaries)
+            self.in_transforms.append(lambda s: bpe.process_line(s))
+            self.out_transforms.append(lambda s: data_utils.process_bpe_symbol(s, bpe_symbol))
 
     def generate(self, src_str, verbose=False):
 
-        src_str = self.tokenizer.tokenize(src_str, return_str=True)
-        if self.bpe:
-            src_str = self.bpe.process_line(src_str)
+        def preprocess(s):
+            for transform in self.in_transforms:
+                s = transform(s)
+            return s
+
+        def preprocess(s):
+            for transform in self.out_transforms:
+                s = transform(s)
+            return s
+
+        src_str = preprocess(src_str)
 
         for batch in self.make_batches([src_str], self.args, self.task, self.max_positions):
             src_tokens = batch.src_tokens
@@ -89,7 +103,8 @@ class Generator(object):
             src_tokens = utils.strip_pad(src_tokens, self.tgt_dict.pad())
 
         if self.src_dict is not None:
-            src_str = self.src_dict.string(src_tokens, self.args.remove_bpe)
+            src_str = self.src_dict.string(src_tokens)
+            src_str = postprocess(src_str)
             if verbose:
                 print('S\t{}'.format(src_str))
 
@@ -101,8 +116,8 @@ class Generator(object):
                 alignment=hypo['alignment'].int().cpu() if hypo['alignment'] is not None else None,
                 align_dict=self.align_dict,
                 tgt_dict=self.tgt_dict,
-                remove_bpe=self.args.remove_bpe,
             )
+            hypo_str = postprocess(hypo_str)
             if verbose:
                 print('H\t{}\t{}'.format(hypo['score'], hypo_str))
                 print('P\t{}'.format(
@@ -117,6 +132,8 @@ class Generator(object):
 
     @classmethod
     def from_pretrained(cls, parser, *args, model_name_or_path, data_name_or_path, **kwargs):
+        from fairseq import file_utils
+
         model_path = file_utils.load_archive_file(model_name_or_path)
         data_path = file_utils.load_archive_file(data_name_or_path)
         checkpoint_path = os.path.join(model_path, 'model.pt')
