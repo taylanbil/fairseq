@@ -31,7 +31,7 @@ class Trainer(object):
     communication of the gradients across workers.
     """
 
-    def __init__(self, args, task, model, criterion, dummy_batch=None, oom_batch=None):
+    def __init__(self, args, task, model, criterion, dummy_batch=None, oom_batch=None, xla=False):
         self.args = args
         self.task = task
 
@@ -63,6 +63,7 @@ class Trainer(object):
         self.fast_stat_sync = args.fast_stat_sync
 
         self.init_meters(args)
+        self.xla = xla
 
     def init_meters(self, args):
         self.meters = OrderedDict()
@@ -419,7 +420,12 @@ class Trainer(object):
             self._prev_grad_norm = grad_norm
 
             # take an optimization step
-            self.optimizer.step()
+
+            # xla takes care of optimization step using
+            #   torch_xla.xla_model.optimizer_step
+            # so skip optimization step here in that case
+            if not self.xla:
+                self.optimizer.step()
             self.set_num_updates(self.get_num_updates() + 1)
 
             # task specific update per step
@@ -433,8 +439,11 @@ class Trainer(object):
             self.meters['wpb'].update(ntokens)
             self.meters['bsz'].update(nsentences)
             self.meters['gnorm'].update(grad_norm)
+            # the comparison below introduces too many .item() calls and slows
+            # down tpu
             self.meters['clip'].update(
-                1. if grad_norm > self.args.clip_norm and self.args.clip_norm > 0 else 0.
+                0.
+                #1. if grad_norm > self.args.clip_norm and self.args.clip_norm > 0 else 0.
             )
             self.meters['train_loss'].update(logging_output.get('loss', 0), sample_size)
             if 'train_acc' in self.meters:
@@ -575,6 +584,14 @@ class Trainer(object):
         if name not in self.meters:
             return None
         return self.meters[name]
+
+    def meters_to_device(self, device):
+        """Send meters' values to given device. Useful for TPU's."""
+        for meter in self.meters.values():
+            for key, val in vars(meter).items():
+                if isinstance(val, torch.Tensor):
+                    newval = val.to(device=torch.device(device))
+                    setattr(meter, key, newval)
 
     def get_num_updates(self):
         """Get the number of parameters updates."""

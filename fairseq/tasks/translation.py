@@ -25,6 +25,7 @@ def load_langpair_dataset(
     combine, dataset_impl, upsample_primary,
     left_pad_source, left_pad_target, max_source_positions,
     max_target_positions, prepend_bos=False, load_alignments=False,
+    input_shapes=None,
 ):
     def split_exists(split, src, tgt, lang, data_path):
         filename = os.path.join(data_path, '{}.{}-{}.{}'.format(split, src, tgt, lang))
@@ -88,6 +89,7 @@ def load_langpair_dataset(
         max_source_positions=max_source_positions,
         max_target_positions=max_target_positions,
         align_dataset=align_dataset,
+        input_shapes=input_shapes,
     )
 
 
@@ -203,6 +205,7 @@ class TranslationTask(FairseqTask):
             max_source_positions=self.args.max_source_positions,
             max_target_positions=self.args.max_target_positions,
             load_alignments=self.args.load_alignments,
+            input_shapes=getattr(self.args, 'input_shapes', None),
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths):

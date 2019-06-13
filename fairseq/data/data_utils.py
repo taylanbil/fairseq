@@ -26,9 +26,25 @@ def infer_language_pair(path):
     return src, dst
 
 
-def collate_tokens(values, pad_idx, eos_idx=None, left_pad=False, move_eos_to_beginning=False):
+def get_pad_size(values, input_shapes):
+    if input_shapes is None:
+        return max(v.size(0) for v in values)
+    for batch_size, padlen in input_shapes:
+        if len(values) == batch_size:
+            return padlen
+    else:
+        raise IndexError(
+            'Encountered values with invalid length {}, input shapes were {}'
+            .format(len(values), input_shapes)
+        )
+
+
+def collate_tokens(
+    values, pad_idx, eos_idx=None, left_pad=False,
+    move_eos_to_beginning=False, input_shapes=None,
+):
     """Convert a list of 1d tensors into a padded 2d tensor."""
-    size = max(v.size(0) for v in values)
+    size = get_pad_size(values, input_shapes)
     res = values[0].new(len(values), size).fill_(pad_idx)
 
     def copy_tensor(src, dst):
@@ -227,8 +243,23 @@ def batch_by_size(
 
     if isinstance(indices, types.GeneratorType):
         indices = np.fromiter(indices, dtype=np.int64, count=-1)
-
     return batch_by_size_fast(indices, num_tokens_fn, max_tokens, max_sentences, bsz_mult)
+
+
+def batch_by_size_tpu(
+    indices, num_tokens_fn, input_shapes
+):
+    batches = [[] for _ in input_shapes]
+    for idx in indices:
+        sample_len = num_tokens_fn(idx)
+        for j, (batch_size, padlen) in enumerate(input_shapes):
+            if padlen < sample_len:
+                continue
+            batches[j].append(idx)
+            if len(batches[j]) == batch_size:
+                yield batches[j]
+                batches[j] = []
+            break
 
 
 def process_bpe_symbol(sentence: str, bpe_symbol: str):

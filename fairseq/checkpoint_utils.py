@@ -17,6 +17,8 @@ from torch.serialization import default_restore_location
 
 from fairseq.models import FairseqEncoder, FairseqDecoder
 
+import torch_xla.core.xla_model as xm
+
 
 def save_checkpoint(args, trainer, epoch_itr, val_loss):
     from fairseq import distributed_utils, meters
@@ -62,15 +64,17 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
         extra_state.update({'best': save_checkpoint.best})
 
     checkpoints = [os.path.join(args.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond]
+
     if len(checkpoints) > 0:
         trainer.save_checkpoint(checkpoints[0], extra_state)
         for cp in checkpoints[1:]:
             try:
                 from fairseq.fb_pathmgr import fb_pathmgr
-                fb_pathmgr.copy(checkpoints[0], cp, True)
+                if getattr(args, 'use_gpu', True) or xm.is_master_ordinal():
+                    fb_pathmgr.copy(checkpoints[0], cp, True)
             except (ModuleNotFoundError, ImportError):
-                shutil.copyfile(checkpoints[0], cp)
-
+                if getattr(args, 'use_gpu', True) or xm.is_master_ordinal():
+                    shutil.copyfile(checkpoints[0], cp)
         write_timer.stop()
         print('| saved checkpoint {} (epoch {} @ {} updates) (writing took {} seconds)'.format(
             checkpoints[0], epoch, updates, write_timer.sum))
@@ -97,7 +101,7 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
 def load_checkpoint(args, trainer, data_selector=None):
     """Load a checkpoint and restore the training iterator."""
     # only one worker should attempt to create the required dir
-    if args.distributed_rank == 0:
+    if args.distributed_rank == 0 or xm.is_master_ordinal():
         os.makedirs(args.save_dir, exist_ok=True)
 
     if args.restore_file == 'checkpoint_last.pt':
@@ -210,7 +214,8 @@ def checkpoint_paths(path, pattern=r'checkpoint(\d+)\.pt'):
 def torch_persistent_save(*args, **kwargs):
     for i in range(3):
         try:
-            return torch.save(*args, **kwargs)
+            save_func = xm.save if kwargs.pop('xla', False) else torch.save
+            return save_func(*args, **kwargs)
         except Exception:
             if i == 2:
                 logging.error(traceback.format_exc())
@@ -256,14 +261,17 @@ def save_state(
         state_dict['criterion'] = criterion.state_dict()
     if not args.no_save_optimizer_state:
         state_dict['last_optimizer_state'] = convert_state_dict_type(optimizer.state_dict())
-
     try:
         from fairseq.fb_pathmgr import fb_pathmgr
         with fb_pathmgr.open(filename, "wb") as f:
-            torch_persistent_save(state_dict, f)
+            torch_persistent_save(
+                state_dict, f, xla=not getattr(args, 'use_gpu', True)
+            )
     except (ModuleNotFoundError, ImportError):
         # if path manager not found, continue with local file.
-        torch_persistent_save(state_dict, filename)
+        torch_persistent_save(
+            state_dict, filename, xla=not getattr(args, 'use_gpu', True)
+        )
 
 
 def _upgrade_state_dict(state):
