@@ -21,7 +21,7 @@ from torch.serialization import default_restore_location
 from fairseq.models import FairseqEncoder, FairseqDecoder
 
 
-def save_checkpoint(args, trainer, epoch_itr, val_loss):
+def save_checkpoint(args, trainer, epoch_itr, val_loss, master_ordinal=True):
     from fairseq import distributed_utils, meters
 
     if args.no_save or not distributed_utils.is_master(args):
@@ -64,9 +64,11 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
 
     checkpoints = [os.path.join(args.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond]
     if len(checkpoints) > 0:
-        trainer.save_checkpoint(checkpoints[0], extra_state)
+        trainer.save_checkpoint(checkpoints[0] if master_ordinal else os.devnull, extra_state)
         for cp in checkpoints[1:]:
-            shutil.copyfile(checkpoints[0], cp)
+            #shutil.copyfile(checkpoints[0], cp)
+            # FIXME: this breaks when symlink exists
+            os.symlink(cp, checkpoints[0])
 
         write_timer.stop()
         print('| saved checkpoint {} (epoch {} @ {} updates) (writing took {} seconds)'.format(
