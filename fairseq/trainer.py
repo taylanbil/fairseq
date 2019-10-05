@@ -129,7 +129,7 @@ class Trainer(object):
         if distributed_utils.is_master(self.args):  # only save one checkpoint
             extra_state['train_meters'] = self.meters
             checkpoint_utils.save_state(
-                filename, self.args, self.get_model().state_dict(), self.criterion,
+                filename, self.args, self.get_model().to('cpu').state_dict(), self.criterion,
                 self.optimizer, self.lr_scheduler, self.get_num_updates(),
                 self._optim_history, extra_state,
             )

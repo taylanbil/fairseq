@@ -63,6 +63,7 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
         extra_state.update({'best': save_checkpoint.best})
 
     checkpoints = [os.path.join(args.save_dir, fn) for fn, cond in checkpoint_conds.items() if cond]
+    checkpoints = [args.restore_file + '-cpu.pt']
     if len(checkpoints) > 0:
         trainer.save_checkpoint(checkpoints[0], extra_state)
         for cp in checkpoints[1:]:
@@ -107,7 +108,8 @@ def load_checkpoint(args, trainer):
 
     checkpoint_path = get_checkpoint_path(args)
     extra_state = trainer.load_checkpoint(
-        checkpoint_path,
+        #checkpoint_path,
+        args.restore_file,
         args.reset_optimizer,
         args.reset_lr_scheduler,
         eval(args.optimizer_overrides),
@@ -244,6 +246,8 @@ def save_state(
         optim_history = []
     if extra_state is None:
         extra_state = {}
+    for pair in extra_state['train_meters'].items():
+        pair[-1].reset()
     state_dict = {
         'args': args,
         'model': model_state_dict if model_state_dict else {},

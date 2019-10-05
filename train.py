@@ -338,6 +338,12 @@ def main_tpu(args):
         # corresponding train iterator
         extra_state, epoch_itr = checkpoint_utils.load_checkpoint(
             args, trainers[devices[0]])
+        progress = initialize_loader_for_epoch(args, epoch_itr)
+        # FIXME
+        checkpoint_utils.save_checkpoint(args, trainers[devices[0]], epoch_itr, None)
+
+        import pdb
+        pdb.set_trace()
         if extra_state is not None:
             # checkpoint detected, load saved model weights to all devices
             xu.eprint(
