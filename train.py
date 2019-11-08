@@ -367,6 +367,7 @@ def main_tpu(args):
                     flush=True,
                 )
             log_output = trainer.train_step(samples)
+            log_output=None if args.suppress_loss_report else log_output
             xm.optimizer_step(trainer.optimizer)
             tracker.add(sum(sample['nsentences'] for sample in samples))
         return tracker
@@ -575,6 +576,7 @@ def get_args():
     parser.add_argument('--num_cores', type=int, default=8)
     parser.add_argument('--metrics_debug', action='store_true')
     parser.add_argument('--use_gpu', action='store_true')
+    parser.add_argument('--suppress_loss_report', action='store_true')
     parser.add_argument('--target_train_loss', type=float, default=None)
     parser.add_argument('--target_valid_loss', type=float, default=None)
     args = options.parse_args_and_arch(parser)
