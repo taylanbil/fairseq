@@ -345,6 +345,7 @@ def main_tpu(args):
         extra_state, epoch_itr = checkpoint_utils.load_checkpoint(args, trainer)
         trainer.args.distributed_rank = 0
         trainer.args.distributed_world_size = 1
+        trainer.meters_to_device(xla_device)
         valid_subsets = args.valid_subset.split(',')
         ordinal = xm.get_ordinal(defval=-1)
         device_str = (
