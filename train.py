@@ -10,7 +10,6 @@ Train a new model on one or across multiple GPUs.
 import collections
 import math
 import sys
-import os
 import random
 from datetime import datetime
 
@@ -32,32 +31,6 @@ from fairseq.trainer import Trainer
 from fairseq.meters import AverageMeter, StopwatchMeter
 
 fb_pathmgr_registerd = False
-
-
-def initialize_loader_for_epoch(args, epoch_itr, prefix='training'):
-    # Update parameters every N batches
-    if epoch_itr.epoch <= len(args.update_freq):
-        update_freq = args.update_freq[epoch_itr.epoch - 1]
-    else:
-        update_freq = args.update_freq[-1]
-
-    # Initialize data iterator
-    itr = epoch_itr.next_epoch_itr(
-          fix_batches_to_gpus=False, shuffle=(epoch_itr.epoch >= args.curriculum))
-    itr = iterators.GroupedIterator(itr, update_freq)
-    progress = progress_bar.build_progress_bar(
-          args, itr, epoch_itr.epoch, prefix=prefix, no_progress_bar='simple')
-    return progress
-
-
-def print_model_criterion(model, criterion, args):
-      print(model)
-      print('| model {}, criterion {}'.format(args.arch,
-                                              criterion.__class__.__name__))
-      print('| num. model params: {} (num. trained: {})'.format(
-          sum(p.numel() for p in model.parameters()),
-          sum(p.numel() for p in model.parameters() if p.requires_grad),
-      ))
 
 
 def initialize_loader_for_epoch(args, epoch_itr, prefix='training'):

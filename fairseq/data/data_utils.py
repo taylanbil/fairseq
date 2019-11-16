@@ -262,22 +262,6 @@ def batch_by_size_tpu(
             break
 
 
-def batch_by_size_tpu(
-    indices, num_tokens_fn, input_shapes
-):
-    batches = [[] for _ in input_shapes]
-    for idx in indices:
-        sample_len = num_tokens_fn(idx)
-        for j, (batch_size, padlen) in enumerate(input_shapes):
-            if padlen < sample_len:
-                continue
-            batches[j].append(idx)
-            if len(batches[j]) == batch_size:
-                yield batches[j]
-                batches[j] = []
-            break
-
-
 def process_bpe_symbol(sentence: str, bpe_symbol: str):
     if bpe_symbol == 'sentencepiece':
         sentence = sentence.replace(' ', '').replace('\u2581', ' ').strip()

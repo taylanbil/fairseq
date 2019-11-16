@@ -109,14 +109,6 @@ def load_checkpoint(args, trainer, data_selector=None):
     else:
         checkpoint_path = args.restore_file
 
-
-def load_checkpoint(args, trainer):
-    """Load a checkpoint and restore the training iterator."""
-    # only one worker should attempt to create the required dir
-    if args.distributed_rank == 0 or xm.is_master_ordinal():
-        os.makedirs(args.save_dir, exist_ok=True)
-
-    checkpoint_path = get_checkpoint_path(args)
     extra_state = trainer.load_checkpoint(
         checkpoint_path,
         args.reset_optimizer,
