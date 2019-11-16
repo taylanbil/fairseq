@@ -1,9 +1,7 @@
-# Copyright (c) 2017-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the license found in the LICENSE file in
-# the root directory of this source tree. An additional grant of patent rights
-# can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 
 import argparse
 
@@ -11,6 +9,7 @@ import torch
 import sys
 
 from fairseq import utils
+from fairseq.data.indexed_dataset import get_available_dataset_impl
 
 
 def get_preprocessing_parser(default_task='translation'):
@@ -46,6 +45,14 @@ def get_eval_lm_parser(default_task='language_modeling'):
     parser = get_parser('Evaluate Language Model', default_task)
     add_dataset_args(parser, gen=True)
     add_eval_lm_args(parser)
+    return parser
+
+
+def get_validation_parser(default_task=None):
+    parser = get_parser('Validation', default_task)
+    add_dataset_args(parser, train=True)
+    group = parser.add_argument_group('Evaluation')
+    add_common_eval_args(group)
     return parser
 
 
@@ -186,6 +193,8 @@ def get_parser(desc, default_task='translation'):
                         help='threshold FP16 loss scale from below')
     parser.add_argument('--user-dir', default=None,
                         help='path to a python module containing custom extensions (tasks and/or architectures)')
+    parser.add_argument('--empty-cache-freq', default=0, type=int,
+                        help='how often to clear the PyTorch CUDA cache (0 to disable)')
 
     from fairseq.registry import REGISTRIES
     for registry_name, REGISTRY in REGISTRIES.items():
@@ -217,6 +226,8 @@ def add_preprocess_args(parser):
                        help="comma separated, valid file prefixes")
     group.add_argument("--testpref", metavar="FP", default=None,
                        help="comma separated, test file prefixes")
+    group.add_argument("--align-suffix", metavar="FP", default=None,
+                       help="alignment file suffix")
     group.add_argument("--destdir", metavar="DIR", default="data-bin",
                        help="destination dir")
     group.add_argument("--thresholdtgt", metavar="N", default=0, type=int,
@@ -233,8 +244,9 @@ def add_preprocess_args(parser):
                        help="number of source words to retain")
     group.add_argument("--alignfile", metavar="ALIGN", default=None,
                        help="an alignment file (optional)")
-    parser.add_argument('--dataset-impl', metavar="FORMAT", help='output dataset implementation',
-                        choices=['raw', 'lazy', 'cached', 'mmap'], default='cached')
+    parser.add_argument('--dataset-impl', metavar='FORMAT', default='mmap',
+                        choices=get_available_dataset_impl(),
+                        help='output dataset implementation')
     group.add_argument("--joined-dictionary", action="store_true",
                        help="Generate joined dictionary")
     group.add_argument("--only-source", action="store_true",
@@ -250,7 +262,7 @@ def add_preprocess_args(parser):
 def add_dataset_args(parser, train=False, gen=False):
     group = parser.add_argument_group('Dataset and data loading')
     # fmt: off
-    group.add_argument('--num-workers', default=0, type=int, metavar='N',
+    group.add_argument('--num-workers', default=1, type=int, metavar='N',
                        help='how many subprocesses to use for data loading')
     group.add_argument('--skip-invalid-size-inputs-valid-test', action='store_true',
                        help='ignore too long or too short lines in valid and test set')
@@ -260,8 +272,9 @@ def add_dataset_args(parser, train=False, gen=False):
                        help='maximum number of sentences in a batch')
     group.add_argument('--required-batch-size-multiple', default=8, type=int, metavar='N',
                        help='batch size will be a multiplier of this value')
-    parser.add_argument('--dataset-impl', metavar="FORMAT", help='output dataset implementation',
-                        choices=['raw', 'lazy', 'cached', 'mmap'], default='cached')
+    parser.add_argument('--dataset-impl', metavar='FORMAT',
+                        choices=get_available_dataset_impl(),
+                        help='output dataset implementation')
     if train:
         group.add_argument('--train-subset', default='train', metavar='SPLIT',
                            choices=['train', 'valid', 'test'],
@@ -271,6 +284,8 @@ def add_dataset_args(parser, train=False, gen=False):
                                 ' (train, valid, valid1, test, test1)')
         group.add_argument('--validate-interval', type=int, default=1, metavar='N',
                            help='validate every N epochs')
+        group.add_argument('--fixed-validation-seed', default=None, type=int, metavar='N',
+                           help='specified random seed for validation')
         group.add_argument('--disable-validation', action='store_true',
                            help='disable validation')
         group.add_argument('--max-tokens-valid', type=int, metavar='N',
@@ -323,6 +338,9 @@ def add_distributed_training_args(parser):
     group.add_argument('--find-unused-parameters', default=False, action='store_true',
                        help='disable unused parameter detection (not applicable to '
                        'no_c10d ddp-backend')
+    group.add_argument('--fast-stat-sync', default=False, action='store_true',
+                        help='Enable fast sync of stats between nodes, this hardcodes to '
+                        'sync only some default stats from logging_output.')
     # fmt: on
     return group
 
@@ -349,7 +367,7 @@ def add_optimization_args(parser):
     group.add_argument('--min-lr', default=-1, type=float, metavar='LR',
                        help='stop training when the learning rate reaches this minimum')
     group.add_argument('--use-bmuf', default=False, action='store_true',
-                        help="specify global optimizer for syncing models on different GPUs/Shards")
+                       help='specify global optimizer for syncing models on different GPUs/shards')
     # fmt: on
     return group
 
@@ -360,7 +378,8 @@ def add_checkpoint_args(parser):
     group.add_argument('--save-dir', metavar='DIR', default='checkpoints',
                        help='path to save checkpoints')
     group.add_argument('--restore-file', default='checkpoint_last.pt',
-                       help='filename in save-dir from which to load checkpoint')
+                       help='filename from which to load checkpoint '
+                            '(default: <save-dir>/checkpoint_last.pt')
     group.add_argument('--reset-dataloader', action='store_true',
                        help='if set, does not reload dataloader state from the checkpoint')
     group.add_argument('--reset-lr-scheduler', action='store_true',
@@ -447,9 +466,7 @@ def add_generation_args(parser):
     group.add_argument('--match-source-len', default=False, action='store_true',
                        help=('generations should match the source length'))
     group.add_argument('--no-early-stop', action='store_true',
-                       help=('continue searching even after finalizing k=beam '
-                             'hypotheses; this is more correct, but increases '
-                             'generation time by 50%%'))
+                       help='deprecated')
     group.add_argument('--unnormalized', action='store_true',
                        help='compare unnormalized hypothesis scores')
     group.add_argument('--no-beamable-mm', action='store_true',
@@ -482,6 +499,18 @@ def add_generation_args(parser):
                        help='strength of diversity penalty for Diverse Beam Search')
     group.add_argument('--print-alignment', action='store_true',
                        help='if set, uses attention feedback to compute and print alignment to source tokens')
+    group.add_argument('--print-step', action='store_true')
+
+    # arguments for iterative refinement generator
+    group.add_argument('--iter-decode-eos-penalty', default=0.0, type=float, metavar='N',
+                       help='if > 0.0, it penalized early-stopping in decoding.')
+    group.add_argument('--iter-decode-max-iter', default=10, type=int, metavar='N',
+                       help='maximum iterations for iterative refinement.')
+    group.add_argument('--iter-decode-force-max-iter', action='store_true',
+                       help='if set, run exact the maximum number of iterations without early stop')
+
+    # special decoding format for advanced decoding.
+    group.add_argument('--decoding-format', default=None, type=str, choices=['unigram', 'ensemble', 'vote', 'dp', 'bs'])
     # fmt: on
     return group
 

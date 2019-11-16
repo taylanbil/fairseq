@@ -1,10 +1,8 @@
 #!/usr/bin/env python3 -u
-# Copyright (c) 2017-present, Facebook, Inc.
-# All rights reserved.
+# Copyright (c) Facebook, Inc. and its affiliates.
 #
-# This source code is licensed under the license found in the LICENSE file in
-# the root directory of this source tree. An additional grant of patent rights
-# can be found in the PATENTS file in the same directory.
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
 """
 Train a new model on one or across multiple GPUs.
 """
@@ -16,6 +14,7 @@ import os
 import random
 from datetime import datetime
 
+import numpy as np
 import torch
 import torch_xla
 import torch_xla.debug.metrics as met
@@ -25,10 +24,40 @@ import torch_xla.utils.utils as xu
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
 
-from fairseq import checkpoint_utils, distributed_utils, options, progress_bar, tasks, utils
+from fairseq import (
+    checkpoint_utils, distributed_utils, options, progress_bar, tasks, utils
+)
 from fairseq.data import iterators
 from fairseq.trainer import Trainer
 from fairseq.meters import AverageMeter, StopwatchMeter
+
+fb_pathmgr_registerd = False
+
+
+def initialize_loader_for_epoch(args, epoch_itr, prefix='training'):
+    # Update parameters every N batches
+    if epoch_itr.epoch <= len(args.update_freq):
+        update_freq = args.update_freq[epoch_itr.epoch - 1]
+    else:
+        update_freq = args.update_freq[-1]
+
+    # Initialize data iterator
+    itr = epoch_itr.next_epoch_itr(
+          fix_batches_to_gpus=False, shuffle=(epoch_itr.epoch >= args.curriculum))
+    itr = iterators.GroupedIterator(itr, update_freq)
+    progress = progress_bar.build_progress_bar(
+          args, itr, epoch_itr.epoch, prefix=prefix, no_progress_bar='simple')
+    return progress
+
+
+def print_model_criterion(model, criterion, args):
+      print(model)
+      print('| model {}, criterion {}'.format(args.arch,
+                                              criterion.__class__.__name__))
+      print('| num. model params: {} (num. trained: {})'.format(
+          sum(p.numel() for p in model.parameters()),
+          sum(p.numel() for p in model.parameters() if p.requires_grad),
+      ))
 
 
 def initialize_loader_for_epoch(args, epoch_itr, prefix='training'):
@@ -60,15 +89,28 @@ def print_model_criterion(model, criterion, args):
 def main(args, init_distributed=False):
     utils.import_user_module(args)
 
+    try:
+        from fairseq.fb_pathmgr import fb_pathmgr
+        global fb_pathmgr_registerd
+        if not fb_pathmgr_registerd:
+            fb_pathmgr.register()
+            fb_pathmgr_registerd = True
+    except (ModuleNotFoundError, ImportError):
+        pass
+
     assert args.max_tokens is not None or args.max_sentences is not None, \
         'Must specify batch size either with --max-tokens or --max-sentences'
 
     # Initialize CUDA and distributed training
     if torch.cuda.is_available() and not args.cpu:
         torch.cuda.set_device(args.device_id)
+    np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     if init_distributed:
         args.distributed_rank = distributed_utils.distributed_init(args)
+
+    if distributed_utils.is_master(args):
+        checkpoint_utils.verify_checkpoint_directory(args.save_dir)
 
     # Print args
     print(args)
@@ -103,7 +145,6 @@ def main(args, init_distributed=False):
     lr = trainer.get_lr()
     train_meter = StopwatchMeter()
     train_meter.start()
-    valid_losses = [None]
     valid_subsets = args.valid_subset.split(',')
     while lr > args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update:
         # train for one epoch
@@ -121,9 +162,9 @@ def main(args, init_distributed=False):
         if epoch_itr.epoch % args.save_interval == 0:
             checkpoint_utils.save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
 
-        if ':' in getattr(args, 'data', ''):
-            # sharded data: get train iterator for next epoch
-            epoch_itr = trainer.get_train_iterator(epoch_itr.epoch)
+        reload_dataset = ':' in getattr(args, 'data', '')
+        # sharded data: get train iterator for next epoch
+        epoch_itr = trainer.get_train_iterator(epoch_itr.epoch, load_dataset=reload_dataset)
     train_meter.stop()
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
 
@@ -144,16 +185,17 @@ def train(args, trainer, task, epoch_itr):
         for k, v in log_output.items():
             if k in ['loss', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
                 continue  # these are already logged above
-            if 'loss' in k:
+            if 'loss' in k or k == 'accuracy':
                 extra_meters[k].update(v, log_output['sample_size'])
             else:
                 extra_meters[k].update(v)
             stats[k] = extra_meters[k].avg
         progress.log(stats, tag='train', step=stats['num_updates'])
 
-        # ignore the first mini-batch in words-per-second calculation
+        # ignore the first mini-batch in words-per-second and updates-per-second calculation
         if i == 0:
             trainer.get_meter('wps').reset()
+            trainer.get_meter('ups').reset()
 
         num_updates = trainer.get_num_updates()
         if (
@@ -210,6 +252,11 @@ def get_training_stats(trainer):
 
 def validate(args, trainer, task, epoch_itr, subsets):
     """Evaluate the model on the validation set(s) and return the losses."""
+
+    if args.fixed_validation_seed is not None:
+        # set fixed seed for every validation
+        utils.set_torch_seed(args.fixed_validation_seed)
+
     valid_losses = []
     for subset in subsets:
         # Initialize data iterator
@@ -250,16 +297,20 @@ def validate(args, trainer, task, epoch_itr, subsets):
                 extra_meters[k].update(v)
 
         # log validation stats
-        stats = get_valid_stats(trainer)
+        stats = get_valid_stats(trainer, args, extra_meters)
         for k, meter in extra_meters.items():
             stats[k] = meter.avg
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
-        valid_losses.append(stats[args.best_checkpoint_metric].avg)
+        valid_losses.append(
+            stats[args.best_checkpoint_metric].avg
+            if args.best_checkpoint_metric == 'loss'
+            else stats[args.best_checkpoint_metric]
+        )
     return valid_losses
 
 
-def get_valid_stats(trainer):
+def get_valid_stats(trainer, args, extra_meters=None):
     stats = collections.OrderedDict()
     stats['loss'] = trainer.get_meter('valid_loss')
     if trainer.get_meter('valid_nll_loss').count > 0:
@@ -270,8 +321,23 @@ def get_valid_stats(trainer):
     stats['ppl'] = utils.get_perplexity(nll_loss.avg)
     stats['num_updates'] = trainer.get_num_updates()
     if hasattr(checkpoint_utils.save_checkpoint, 'best'):
-        stats['best_loss'] = min(
-            checkpoint_utils.save_checkpoint.best, stats['loss'].avg)
+        key = 'best_{0}'.format(args.best_checkpoint_metric)
+        best_function = max if args.maximize_best_checkpoint_metric else min
+
+        current_metric = None
+        if args.best_checkpoint_metric == 'loss':
+            current_metric = stats['loss'].avg
+        elif args.best_checkpoint_metric in extra_meters:
+            current_metric = extra_meters[args.best_checkpoint_metric].avg
+        elif args.best_checkpoint_metric in stats:
+            current_metric = stats[args.best_checkpoint_metric]
+        else:
+            raise ValueError("best_checkpoint_metric not found in logs")
+
+        stats[key] = best_function(
+            checkpoint_utils.save_checkpoint.best,
+            current_metric,
+        )
     return stats
 
 
@@ -360,20 +426,21 @@ def main_tpu(args):
             if i == last_batch_index:
                 # last batches are incomplete
                 break
-            if i and not (i % args.log_steps):
+            if (i == last_batch_index - 1) or not (i % args.log_steps):
                 print(
                     log_step(
                         'training', device, i,
-                        log_output=log_output, tracker=tracker),
+                        log_output=log_output, tracker=tracker,
+                    ),
                     flush=True,
                 )
             log_output = trainer.train_step(samples)
-            log_output=None if args.suppress_loss_report else log_output
+            log_output = None if args.suppress_loss_report else log_output
             xm.optimizer_step(trainer.optimizer)
             tracker.add(sum(sample['nsentences'] for sample in samples))
         return tracker
 
-    def valid_loop_fn(device, trainer, loader, last_batch_index):
+    def valid_loop_fn(args, device, trainer, loader, last_batch_index):
         # reset validation loss meters
         for k in ['valid_loss', 'valid_nll_loss']:
             meter = trainer.get_meter(k)
@@ -391,7 +458,7 @@ def main_tpu(args):
                 if k in ['loss', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
                     continue
                 extra_meters[k].update(v)
-        stats = get_valid_stats(trainer)
+        stats = get_valid_stats(trainer, args)
         for k, meter in extra_meters.items():
             stats[k] = meter.avg
         return stats
@@ -420,7 +487,7 @@ def main_tpu(args):
         )
         para_loader = pl.ParallelLoader(progress, [device])
         stats = valid_loop_fn(
-            device, trainer, para_loader.per_device_loader(device),
+            args, device, trainer, para_loader.per_device_loader(device),
             len(progress) - 1
         )
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
@@ -577,9 +644,9 @@ def get_args():
     parser.add_argument('--num_cores', type=int, default=8)
     parser.add_argument('--metrics_debug', action='store_true')
     parser.add_argument('--use_gpu', action='store_true')
-    parser.add_argument('--suppress_loss_report', action='store_true')
     parser.add_argument('--target_train_loss', type=float, default=None)
     parser.add_argument('--target_valid_loss', type=float, default=None)
+    parser.add_argument('--suppress_loss_report', action='store_true')
     args = options.parse_args_and_arch(parser)
     return args
 
