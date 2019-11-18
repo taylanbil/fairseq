@@ -27,6 +27,19 @@ def infer_language_pair(path):
 
 
 def get_pad_size(values, input_shapes):
+    """
+    Returns the pad size.
+
+    On GPUs, pad to the max sequence length of a given input
+    On TPUs, that would cause a lot of compilations and slow training.
+      Thus, we pad to the "next sequence length as specified in the
+      `input_shapes` argument.
+    We assume `input_shapes` is an array of the form:
+      [[batchsize0, seqlen0], [batchsize1, seqlen1], ...]
+    sorted from shortest to longest sequence lengths, and unique in batch_sizes 
+
+    e.g. [[512, 32], [256, 64], [128, 128]]
+    """
     if input_shapes is None:
         return max(v.size(0) for v in values)
     for batch_size, padlen in input_shapes:
