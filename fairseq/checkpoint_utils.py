@@ -67,13 +67,14 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
 
     if len(checkpoints) > 0:
         trainer.save_checkpoint(checkpoints[0], extra_state)
+        do_copy = getattr(args, 'use_gpu', True) or xm.is_master_ordinal()
         for cp in checkpoints[1:]:
             try:
                 from fairseq.fb_pathmgr import fb_pathmgr
-                if getattr(args, 'use_gpu', True) or xm.is_master_ordinal():
+                if do_copy:
                     fb_pathmgr.copy(checkpoints[0], cp, True)
             except (ModuleNotFoundError, ImportError):
-                if getattr(args, 'use_gpu', True) or xm.is_master_ordinal():
+                if do_copy:
                     shutil.copyfile(checkpoints[0], cp)
         write_timer.stop()
         print('| saved checkpoint {} (epoch {} @ {} updates) (writing took {} seconds)'.format(

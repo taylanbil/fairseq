@@ -355,8 +355,6 @@ class TransformerEncoder(FairseqEncoder):
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
-        #if not encoder_padding_mask.any():
-        #    encoder_padding_mask = None
 
         encoder_states = [] if return_all_hiddens else None
 
@@ -596,8 +594,6 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         x = x.transpose(0, 1)
 
         self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
-        # if not self_attn_padding_mask.any() and not self.cross_self_attention:
-        #     self_attn_padding_mask = None
 
         # decoder layers
         attn = None

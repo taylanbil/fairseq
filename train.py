@@ -17,7 +17,6 @@ import numpy as np
 import torch
 import torch_xla
 import torch_xla.debug.metrics as met
-import torch_xla.distributed.data_parallel as dp
 import torch_xla.distributed.parallel_loader as pl
 import torch_xla.utils.utils as xu
 import torch_xla.core.xla_model as xm
@@ -439,7 +438,7 @@ def main_tpu(args):
     def validate_subset(args, device, trainer, task, epoch_itr, subset):
         xm.master_print('Validating the subset "{}"'.format(subset))
         # Initialize data iterator
-        # XXX: we're not sharding the validation set
+        # we're not sharding the validation set
         itr = task.get_batch_iterator(
             dataset=task.dataset(subset),
             max_tokens=args.max_tokens,
@@ -553,7 +552,6 @@ def main_tpu(args):
 
 def assert_on_losses(args, trainer):
     if xu.getenv_as('XLA_USE_BF16', bool, False):
-        # XXX: loss values are meaningless in this case due to precision in bf16
         return
     valid_loss = args.target_valid_loss or math.inf
     train_loss = args.target_train_loss or math.inf
@@ -652,7 +650,6 @@ def adjust_args_tpu(args):
       raise RuntimeError(errmsg)
 
     args.input_shapes = parse_input_shapes(args.input_shapes)
-    # XXX (taylanbil): do we ever have more than 2 dimensions in fairseq?
     args.max_source_positions = args.input_shapes[-1][1]
     return args
 
