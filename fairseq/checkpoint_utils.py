@@ -68,6 +68,7 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
     if len(checkpoints) > 0:
         trainer.save_checkpoint(checkpoints[0], extra_state)
         do_copy = getattr(args, 'use_gpu', True) or xm.is_master_ordinal()
+        # tpu-comment: copy the saved checkpoint if master ordinal only
         for cp in checkpoints[1:]:
             try:
                 from fairseq.fb_pathmgr import fb_pathmgr
@@ -102,6 +103,8 @@ def save_checkpoint(args, trainer, epoch_itr, val_loss):
 def load_checkpoint(args, trainer, data_selector=None):
     """Load a checkpoint and restore the training iterator."""
     # only one worker should attempt to create the required dir
+    # tpu-comment: master ordinal check is required as distributed rank is
+    #   zero for 8 devices.
     if args.distributed_rank == 0 or xm.is_master_ordinal():
         os.makedirs(args.save_dir, exist_ok=True)
 

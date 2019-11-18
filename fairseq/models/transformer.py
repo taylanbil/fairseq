@@ -355,6 +355,10 @@ class TransformerEncoder(FairseqEncoder):
 
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
+        # tpu-comment: the code snippet
+        #   `if not encoder_padding_mask.any(): encoder_padding_mask = None`
+        #  causes .item() calls for tpu, so it's not worth having it in here.
+
 
         encoder_states = [] if return_all_hiddens else None
 

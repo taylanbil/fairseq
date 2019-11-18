@@ -249,6 +249,15 @@ def batch_by_size(
 def batch_by_size_tpu(
     indices, num_tokens_fn, input_shapes
 ):
+    """
+    tpu-comment: varying input shapes cause compilations and slow TPU training.
+     There is a trade-off between
+     * allow varying input shapes and lose time to compilations
+     * fix input shapes by padding and lose time by wasting flops
+
+    It is generally up to experimentation to determine the optimal input_shapes
+    parameter that results in the best performance.
+    """
     batches = [[] for _ in input_shapes]
     for idx in indices:
         sample_len = num_tokens_fn(idx)

@@ -17,6 +17,8 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
     smooth_loss = -lprobs.sum(dim=-1, keepdim=True)
     if ignore_index is not None:
         non_pad_mask = target.ne(ignore_index)
+        # tpu-comment: masked_selecting using non-pad-mask causes compilations
+        #     hence, we fill w/ 0s and sum
         nll_loss = nll_loss.masked_fill_(~non_pad_mask, 0.0)
         smooth_loss = smooth_loss.masked_fill_(~non_pad_mask, 0.0)
     else:
@@ -57,6 +59,9 @@ class LabelSmoothedCrossEntropyCriterion(FairseqCriterion):
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
         sample_size = sample['target'].size(0) if self.args.sentence_avg else sample['ntokens']
         logging_output = {
+            # tpu-comment: removing the item() calls here since it adds 2
+            #   aten::_local_scalar_dense's that slow the training down.
+            #   the returned loss values are scalar tensors if `reduce`
             'loss': loss.data,
             'nll_loss': nll_loss.data,
             'ntokens': sample['ntokens'],

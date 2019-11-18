@@ -39,6 +39,10 @@ class MultiheadAttention(nn.Module):
         assert not self.self_attention or self.qkv_same_dim, 'Self-attention requires query, key and ' \
                                                              'value to be of the same size'
 
+        # tpu-comment: The following `in_proj` code is from an older upstream
+        #    branch in fairseq. The newer version where we don't handle
+        #    `selg.qkv_same_dim` case separately causes a ~10% regression in
+        #    performance
         if self.qkv_same_dim:
             self.in_proj_weight = Parameter(torch.Tensor(3 * embed_dim, embed_dim))
         else:
@@ -65,6 +69,7 @@ class MultiheadAttention(nn.Module):
 
         self.onnx_trace = False
 
+        # tpu-comment: torch version of multihead attention is slower on TPUs.
         self.enable_torch_version = False
 
     def prepare_for_onnx_export_(self):
@@ -162,7 +167,10 @@ class MultiheadAttention(nn.Module):
                 v = self.in_proj_v(key)
 
         else:
-            raise
+            q = self.q_proj(query)
+            k = self.k_proj(key)
+            v = self.v_proj(value)
+
         q *= self.scaling
 
         if self.bias_k is not None:
