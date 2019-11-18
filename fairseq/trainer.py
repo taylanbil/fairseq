@@ -421,8 +421,8 @@ class Trainer(object):
 
             # take an optimization step
 
-            # xla takes care of optimization step using
-            #   torch_xla.xla_model.optimizer_step
+            # tpu-comment: xla takes care of optimization step using
+            #   `torch_xla.core.xla_model.optimizer_step`
             # so skip optimization step here in that case
             if not self.xla:
                 self.optimizer.step()
@@ -439,8 +439,8 @@ class Trainer(object):
             self.meters['wpb'].update(ntokens)
             self.meters['bsz'].update(nsentences)
             self.meters['gnorm'].update(grad_norm)
-            # the comparison below introduces too many .item() calls and slows
-            # down tpu
+            # tpu-comment: the comparison below introduces too many .item()
+            # calls and slows down tpu
             self.meters['clip'].update(
                 0.
                 #1. if grad_norm > self.args.clip_norm and self.args.clip_norm > 0 else 0.
@@ -586,7 +586,12 @@ class Trainer(object):
         return self.meters[name]
 
     def meters_to_device(self, device):
-        """Send meters' values to given device. Useful for TPU's."""
+        """
+        tpu-comment: Send meters' values to given device.
+        Due to the need of reducing .item() calls, meters values sometimes
+        live on the device. When loading a checkpoint, this requires sending
+        those values to device.
+        """
         for meter in self.meters.values():
             for key, val in vars(meter).items():
                 if isinstance(val, torch.Tensor):

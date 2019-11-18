@@ -153,6 +153,8 @@ class FairseqTask(object):
                 required_batch_size_multiple=required_batch_size_multiple,
             )
         else:
+            # tpu-comment: TPUs suffer from liberally varying input shapes.
+            #   here, we create batches by limiting the input shape variability
             batch_sampler = data_utils.batch_by_size_tpu(
                 indices, dataset.num_tokens,
                 getattr(self.args, 'input_shapes', None)

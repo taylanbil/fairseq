@@ -249,6 +249,10 @@ class MultiheadAttention(nn.Module):
 
         if key_padding_mask is not None:
             # don't attend to padding symbols
+            # tpu-comment: The following masked_fill replaces the upstream code 
+            #  with a mathematically equivalent operation where we rely on
+            #  transposing and pytorch's broadcasting. Result is a ~35% lift in 
+            #  performance
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
             attn_weights = attn_weights.transpose(0, 2)
             attn_weights = attn_weights.masked_fill(key_padding_mask, float('-inf'))

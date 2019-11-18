@@ -15,6 +15,7 @@ from datetime import datetime
 
 import numpy as np
 import torch
+
 import torch_xla
 import torch_xla.debug.metrics as met
 import torch_xla.distributed.parallel_loader as pl
@@ -377,7 +378,8 @@ def main_tpu(args):
 
         # Load the latest checkpoint if one is available and restore the
         # corresponding train iterator
-        # set distributed args here to shard data
+        # we overwrite distributed args here to shard data using torch_xla's
+        # distributed training.
         trainer.args.distributed_rank = xm.get_ordinal()
         trainer.args.distributed_world_size = xm.xrt_world_size()
         extra_state, epoch_itr = checkpoint_utils.load_checkpoint(args, trainer)
@@ -393,6 +395,9 @@ def main_tpu(args):
         return task, trainer, model, epoch_itr, lr, valid_subsets, device_str
 
     def train_loop_fn(device, trainer, loader, last_batch_index):
+        """
+        This is the main training loop. It trains for 1 epoch.
+        """
         stats, log_output, tracker = None, None, xm.RateTracker()
         for i, samples in enumerate(loader):
             if i == last_batch_index:
