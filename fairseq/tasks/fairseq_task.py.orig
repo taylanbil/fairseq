@@ -160,7 +160,6 @@ class FairseqTask(object):
                 getattr(self.args, 'input_shapes', None)
             )
 
-        print("| Created batch samples")
         # return a reusable, sharded iterator
         epoch_iter = iterators.EpochBatchIterator(
             dataset=dataset,

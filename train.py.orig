@@ -137,31 +137,9 @@ def main(args, init_distributed=False):
 
         reload_dataset = ':' in getattr(args, 'data', '')
         # sharded data: get train iterator for next epoch
-
-        # Hack delete previous iters
-        del epoch_itr._cur_epoch_itr.itr
-
         epoch_itr = trainer.get_train_iterator(epoch_itr.epoch, load_dataset=reload_dataset)
     train_meter.stop()
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
-
-
-def reset_training_meters(trainer):
-    # reset training meters
-    for k in [
-        'train_loss', 'train_nll_loss', 'wps', 'ups', 'wpb', 'bsz', 'gnorm', 'clip',
-    ]:
-        meter = trainer.get_meter(k)
-        if meter is not None:
-            meter.reset()
-
-
-def reset_validation_loss_meters(trainer):
-    # reset validation loss meters
-    for k in ['valid_loss', 'valid_nll_loss']:
-        meter = trainer.get_meter(k)
-        if meter is not None:
-            meter.reset()
 
 
 def train(args, trainer, task, epoch_itr):
@@ -170,12 +148,11 @@ def train(args, trainer, task, epoch_itr):
     extra_meters = collections.defaultdict(lambda: AverageMeter())
     valid_subsets = args.valid_subset.split(',')
     max_update = args.max_update or math.inf
-
-    print("| starting training epoch: {0}".format(epoch_itr.epoch))
     for i, samples in enumerate(progress, start=epoch_itr.iterations_in_epoch):
         log_output = trainer.train_step(samples)
         if log_output is None:
             continue
+
         # log mid-epoch stats
         stats = get_training_stats(trainer)
         for k, v in log_output.items():
@@ -208,12 +185,17 @@ def train(args, trainer, task, epoch_itr):
 
     # log end-of-epoch stats
     stats = get_training_stats(trainer)
-
     for k, meter in extra_meters.items():
         stats[k] = meter.avg
     progress.print(stats, tag='train', step=stats['num_updates'])
 
-    reset_training_meters(trainer)
+    # reset training meters
+    for k in [
+        'train_loss', 'train_nll_loss', 'wps', 'ups', 'wpb', 'bsz', 'gnorm', 'clip',
+    ]:
+        meter = trainer.get_meter(k)
+        if meter is not None:
+            meter.reset()
 
 
 def get_training_stats(trainer, args):
@@ -278,24 +260,25 @@ def validate(args, trainer, task, epoch_itr, subsets):
             no_progress_bar='simple'
         )
 
-        reset_validation_loss_meters(trainer)
+        # reset validation loss meters
+        for k in ['valid_loss', 'valid_nll_loss']:
+            meter = trainer.get_meter(k)
+            if meter is not None:
+                meter.reset()
         extra_meters = collections.defaultdict(lambda: AverageMeter())
 
         for sample in progress:
             log_output = trainer.valid_step(sample)
+
             for k, v in log_output.items():
-                if k in ['loss', 'nll_loss', 'ntokens', 'nsentences']:
+                if k in ['loss', 'nll_loss', 'ntokens', 'nsentences', 'sample_size']:
                     continue
-                if k == 'accuracy':
-                    extra_meters[k].update(v, log_output['sample_size'])
                 extra_meters[k].update(v)
 
         # log validation stats
         stats = get_valid_stats(trainer, args, extra_meters)
-
         for k, meter in extra_meters.items():
-            if k != 'sample_size':
-                stats[k] = meter.avg
+            stats[k] = meter.avg
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
 
         valid_losses.append(
@@ -303,7 +286,6 @@ def validate(args, trainer, task, epoch_itr, subsets):
             if args.best_checkpoint_metric == 'loss'
             else stats[args.best_checkpoint_metric]
         )
-        del itr.itr
     return valid_losses
 
 
@@ -386,7 +368,7 @@ def main_tpu(args):
             sum(p.numel() for p in model.parameters()),
             sum(p.numel() for p in model.parameters() if p.requires_grad)))
         model = model.to(xla_device)
-        trainer = Trainer(args, task, model, criterion, xla_device=xla_device)
+        trainer = Trainer(args, task, model, criterion, xla=True)
         lr = trainer.get_lr()
 
         # Load the latest checkpoint if one is available and restore the
@@ -433,6 +415,11 @@ def main_tpu(args):
     def valid_loop_fn(
         args, device, trainer, progress, loader, last_batch_index
     ):
+        # reset validation loss meters
+        for k in ['valid_loss', 'valid_nll_loss']:
+            meter = trainer.get_meter(k)
+            if meter is not None:
+                meter.reset()
         extra_meters = collections.defaultdict(lambda: AverageMeter())
         for i, sample in enumerate(loader):
             if i == last_batch_index:
@@ -471,7 +458,6 @@ def main_tpu(args):
             no_progress_bar='simple'
         )
         para_loader = pl.ParallelLoader(progress, [device])
-        reset_validation_loss_meters(trainer)
         stats = valid_loop_fn(
             args, device, trainer, progress,
             para_loader.per_device_loader(device), len(progress) - 1
@@ -527,17 +513,15 @@ def main_tpu(args):
             skip_stat_keys.update({'loss', 'nll_loss', 'gnorm'})
         progress.set_keys_to_skip_mid_epoch(skip_stat_keys)
         para_loader = pl.ParallelLoader(progress, [device])
-        train_loop_fn(
+        tracker = train_loop_fn(
             device, trainer, para_loader.per_device_loader(device),
             len(progress) - 1
         )
-        training_stats = get_training_stats(trainer, args=args)
-        tloss = training_stats['loss'].avg.item()
-        progress.print(training_stats, tag=device)
+        stats = get_training_stats(trainer, args=args)
+        progress.print(stats, tag=device)
         xm.master_print('Epoch {} end {}'.format(epoch_itr.epoch, now()))
         if args.metrics_debug:
             xm.master_print(met.metrics_report())
-        reset_training_meters(trainer)
 
         # VALIDATION
         if not args.disable_validation and epoch_itr.epoch % args.validate_interval == 0:
@@ -545,7 +529,8 @@ def main_tpu(args):
                 args, device, trainer, task, epoch_itr, valid_subsets
             )
 
-            # only use average first validation loss to update learning rate
+            # only use average first validation loss from the first device
+            # to update the learning rate
             vloss = valid_losses[valid_subsets[0]].item()
             xm.master_print('old learning rate: {}'.format(lr))
             lr = trainer.lr_step(epoch_itr.epoch, vloss)
@@ -562,22 +547,16 @@ def main_tpu(args):
 
     train_meter.stop()
     xm.master_print('| done training in {:.1f} seconds'.format(train_meter.sum))
-    assert_on_losses(args, train_loss=tloss, valid_loss=vloss)
+    assert_on_losses(args, trainer)
 
 
-def assert_on_losses(args, train_loss=None, valid_loss=None):
+def assert_on_losses(args, trainer):
     if xu.getenv_as('XLA_USE_BF16', bool, False):
         return
-    if args.target_valid_loss is not None:
-        assert valid_loss is not None and args.target_valid_loss > valid_loss, \
-            'valid loss is {}, target is {}'.format(
-                valid_loss, args.target_valid_loss
-            )
-    if args.target_train_loss is not None:
-        assert train_loss is not None and args.target_train_loss > train_loss, \
-            'train loss is {}, target is {}'.format(
-                train_loss, args.target_train_loss
-            )
+    valid_loss = args.target_valid_loss or math.inf
+    train_loss = args.target_train_loss or math.inf
+    assert valid_loss > trainer.meters['valid_loss'].avg.item()
+    assert train_loss > trainer.meters['train_loss'].avg.item()
 
 
 def cli_main_gpu(args):
