@@ -15,8 +15,11 @@ class PadDataset(BaseWrapperDataset):
         self.pad_idx = pad_idx
         self.left_pad = left_pad
 
-    def collater(self, samples):
-        return data_utils.collate_tokens(samples, self.pad_idx, left_pad=self.left_pad)
+    def collater(self, samples, input_shapes=None):
+        return data_utils.collate_tokens(
+            samples, self.pad_idx, left_pad=self.left_pad,
+            input_shapes=input_shapes,
+        )
 
 
 class LeftPadDataset(PadDataset):

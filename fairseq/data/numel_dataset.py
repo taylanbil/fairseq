@@ -25,7 +25,7 @@ class NumelDataset(BaseWrapperDataset):
     def __len__(self):
         return len(self.dataset)
 
-    def collater(self, samples):
+    def collater(self, samples, input_shapes=None):
         if self.reduce:
             return sum(samples)
         else:

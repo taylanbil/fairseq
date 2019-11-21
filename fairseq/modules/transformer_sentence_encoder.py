@@ -40,9 +40,21 @@ def init_bert_params(module):
         if module.padding_idx is not None:
             module.weight.data[module.padding_idx].zero_()
     if isinstance(module, MultiheadAttention):
-        module.q_proj.weight.data.normal_(mean=0.0, std=0.02)
-        module.k_proj.weight.data.normal_(mean=0.0, std=0.02)
-        module.v_proj.weight.data.normal_(mean=0.0, std=0.02)
+        try:
+            module.q_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.k_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.v_proj.weight.data.normal_(mean=0.0, std=0.02)
+        except AttributeError as e:
+            try:
+                if module.self_attention:
+                    module.in_proj_weight.data.normal_(mean=0.0, std=0.02)
+                else:
+                    raise NotImplementedError(
+                        'Module is not self attention and '
+                        '`in_proj_weight` didnt work'
+                    )
+            except:
+                raise e
 
 
 class TransformerSentenceEncoder(nn.Module):

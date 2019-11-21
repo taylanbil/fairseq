@@ -191,6 +191,7 @@ class MultiLingualMaskedLMTask(FairseqTask):
                     'lang_id': RawLabelDataset([lang_id] * src_dataset.sizes.shape[0]),
                 },
                 sizes=[src_dataset.sizes],
+                input_shapes=getattr(self.args, 'input_shapes', None),
             )
             lang_datasets.append(lang_dataset)
 

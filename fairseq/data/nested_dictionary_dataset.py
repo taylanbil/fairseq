@@ -46,7 +46,7 @@ def _unflatten(dico):
 
 class NestedDictionaryDataset(FairseqDataset):
 
-    def __init__(self, defn, sizes=None):
+    def __init__(self, defn, sizes=None, input_shapes=None):
         super().__init__()
         self.defn = _flatten(defn)
         self.sizes = [sizes] if not isinstance(sizes, (list, tuple)) else sizes
@@ -60,6 +60,7 @@ class NestedDictionaryDataset(FairseqDataset):
                 assert len(v) == len(first), 'dataset lengths must match'
 
         self._len = len(first)
+        self.input_shapes = input_shapes
 
     def __getitem__(self, index):
         return OrderedDict((k, ds[index]) for k, ds in self.defn.items())
@@ -81,9 +82,16 @@ class NestedDictionaryDataset(FairseqDataset):
         sample = OrderedDict()
         for k, ds in self.defn.items():
             try:
-                sample[k] = ds.collater([s[k] for s in samples])
+                sample[k] = ds.collater(
+                    [s[k] for s in samples],
+                    input_shapes=getattr(self, 'input_shapes', None),
+                )
             except NotImplementedError:
                 sample[k] = default_collate([s[k] for s in samples])
+            except TypeError:
+                from fairseq import pdb
+                print(type(ds))
+                pdb.set_trace()
         return _unflatten(sample)
 
     def num_tokens(self, index):

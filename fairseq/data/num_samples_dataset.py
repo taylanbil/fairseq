@@ -14,5 +14,5 @@ class NumSamplesDataset(FairseqDataset):
     def __len__(self):
         return 0
 
-    def collater(self, samples):
+    def collater(self, samples, input_shapes=None):
         return sum(samples)

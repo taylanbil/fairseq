@@ -20,5 +20,5 @@ class RawLabelDataset(FairseqDataset):
     def __len__(self):
         return len(self.labels)
 
-    def collater(self, samples):
+    def collater(self, samples, input_shapes=None):
         return torch.tensor(samples)

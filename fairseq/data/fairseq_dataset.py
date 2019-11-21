@@ -16,7 +16,7 @@ class FairseqDataset(torch.utils.data.Dataset):
     def __len__(self):
         raise NotImplementedError
 
-    def collater(self, samples):
+    def collater(self, samples, input_shapes=None):
         """Merge a list of samples to form a mini-batch.
 
         Args:

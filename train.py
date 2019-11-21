@@ -33,6 +33,17 @@ from fairseq.meters import AverageMeter, StopwatchMeter
 fb_pathmgr_registerd = False
 
 
+def metsumm(w=''):
+    m = met.metrics_report().split('\n')
+    print('-'*30)
+    for i, line in enumerate(m):
+        if 'CompileTime' in line or 'aten::' in line:
+            key = line.strip().split()[-1]
+            value = m[i+1].strip().split()[-1]
+            print('@ {}, {} = {}'.format(w, key, value))
+            print('-'*30)
+
+
 def initialize_loader_for_epoch(args, epoch_itr, prefix='training'):
     # Update parameters every N batches
     if epoch_itr.epoch <= len(args.update_freq):
@@ -414,6 +425,9 @@ def main_tpu(args):
         stats, log_output, skip_stat_keys = None, None, {'clip'}
         tracker = xm.RateTracker()
         for i, samples in enumerate(loader, start=epoch_itr.iterations_in_epoch):
+            print(samples[0]['net_input']['src_tokens'].shape)
+            continue
+            metsumm('step ' + str(i))
             if i == last_batch_index:
                 # last batches are incomplete
                 break
@@ -534,6 +548,7 @@ def main_tpu(args):
         training_stats = get_training_stats(trainer, args=args)
         tloss = training_stats['loss'].avg.item()
         progress.print(training_stats, tag=device)
+        raise
         xm.master_print('Epoch {} end {}'.format(epoch_itr.epoch, now()))
         if args.metrics_debug:
             xm.master_print(met.metrics_report())
@@ -640,6 +655,9 @@ def get_args():
     parser.add_argument('--target_valid_loss', type=float, default=None)
     parser.add_argument('--suppress_loss_report', action='store_true')
     args = options.parse_args_and_arch(parser)
+    # FIXME: debug purposes
+    if args.num_cores == 1:
+        args.num_workers = 1
     return args
 
 
