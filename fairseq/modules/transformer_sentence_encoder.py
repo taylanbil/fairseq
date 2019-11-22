@@ -194,8 +194,9 @@ class TransformerSentenceEncoder(nn.Module):
 
         # compute padding mask. This is needed for multi-head attention
         padding_mask = tokens.eq(self.padding_idx)
-        if not padding_mask.any():
-            padding_mask = None
+        # tpu-comment: this is an item() call
+        # if not padding_mask.any():
+        #    padding_mask = None
 
         x = self.embed_tokens(tokens)
 

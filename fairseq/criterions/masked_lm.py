@@ -29,9 +29,14 @@ class MaskedLmLoss(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
+        # FIXME: proving reduce is always True
+        assert reduce, 'OMG NON REDUCE'
+
         # compute MLM loss
-        masked_tokens = sample['target'].ne(self.padding_idx)
-        sample_size = masked_tokens.int().sum().item()
+        # XXX: taylanbil: disablw all mask related stuff as it introduces atens
+        #masked_tokens = sample['target'].ne(self.padding_idx)
+        #sample_size = masked_tokens.int().sum()#.item()
+        sample_size = 0
 
         # (Rare case) When all tokens are masked, the model results in empty
         # tensor and gives CUDA error.
@@ -41,6 +46,8 @@ class MaskedLmLoss(FairseqCriterion):
         logits = model(**sample['net_input'], masked_tokens=masked_tokens)[0]
         targets = model.get_targets(sample, [logits])
 
+        # XXX: this seems like we have a dynamic shape issue
+        #  verify if logits is always of shape targets[masked_tokens].shape ?
         if sample_size != 0:
             targets = targets[masked_tokens]
 
@@ -55,8 +62,10 @@ class MaskedLmLoss(FairseqCriterion):
             ignore_index=self.padding_idx,
         )
         logging_output = {
-            'loss': utils.item(loss.data) if reduce else loss.data,
-            'nll_loss': utils.item(loss.data) if reduce else loss.data,
+            'loss': loss.data,
+            'nll_loss': loss.data,
+            #'loss': utils.item(loss.data) if reduce else loss.data,
+            #'nll_loss': utils.item(loss.data) if reduce else loss.data,
             'ntokens': sample['ntokens'],
             'nsentences': sample['nsentences'],
             'sample_size': sample_size,

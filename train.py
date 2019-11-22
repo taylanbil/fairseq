@@ -34,6 +34,7 @@ fb_pathmgr_registerd = False
 
 
 def metsumm(w=''):
+    import torch_xla.debug.metrics as met
     m = met.metrics_report().split('\n')
     print('-'*30)
     for i, line in enumerate(m):
@@ -425,12 +426,12 @@ def main_tpu(args):
         stats, log_output, skip_stat_keys = None, None, {'clip'}
         tracker = xm.RateTracker()
         for i, samples in enumerate(loader, start=epoch_itr.iterations_in_epoch):
-            print(samples[0]['net_input']['src_tokens'].shape)
-            continue
-            metsumm('step ' + str(i))
             if i == last_batch_index:
                 # last batches are incomplete
                 break
+            print(i, samples[0]['net_input']['src_tokens'].shape)
+            #continue
+            metsumm('step ' + str(i))
             log_output = trainer.train_step(samples)
             xm.optimizer_step(trainer.optimizer)
             tracker.add(sum(sample['nsentences'] for sample in samples))
