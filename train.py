@@ -168,6 +168,12 @@ def reset_training_meters(trainer):
             meter.reset()
 
 
+def reset_perf_training_meters(trainer, i, ignore_index=0):
+    if i <= ignore_index:
+        trainer.get_meter('wps').reset()
+        trainer.get_meter('ups').reset()
+
+
 def reset_validation_loss_meters(trainer):
     # reset validation loss meters
     for k in ['valid_loss', 'valid_nll_loss']:
@@ -201,9 +207,7 @@ def train(args, trainer, task, epoch_itr):
         progress.log(stats, tag='train', step=stats['num_updates'])
 
         # ignore the first mini-batch in words-per-second and updates-per-second calculation
-        if i == 0:
-            trainer.get_meter('wps').reset()
-            trainer.get_meter('ups').reset()
+        reset_perf_training_meters(trainer, i)
 
         num_updates = trainer.get_num_updates()
         if (
@@ -435,6 +439,7 @@ def main_tpu(args):
             log_output = trainer.train_step(samples)
             xm.optimizer_step(trainer.optimizer)
             tracker.add(sum(sample['nsentences'] for sample in samples))
+            reset_perf_training_meters(trainer, i, ignore_index=10)
             if (not (i % args.log_steps)) or (i == last_batch_index-1):
                 step_args = trainer, progress, args, i, tracker
                 xm.add_step_closure(print_training_update, args=step_args)
@@ -442,6 +447,7 @@ def main_tpu(args):
     def print_training_update(trainer, progress, args, i, tracker):
         stats = get_training_stats(trainer, args=args)
         stats['rate'] = tracker.rate()
+        stats['now'] = now()
         progress.log(stats, step=stats['num_updates'])
         progress.print_mid_epoch(i+1)
 
