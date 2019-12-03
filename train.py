@@ -552,7 +552,6 @@ def main_tpu(args):
         training_stats = get_training_stats(trainer, args=args)
         tloss = training_stats['loss'].avg.item()
         progress.print(training_stats, tag=device)
-        raise
         xm.master_print('Epoch {} end {}'.format(epoch_itr.epoch, now()))
         if args.metrics_debug:
             xm.master_print(met.metrics_report())
