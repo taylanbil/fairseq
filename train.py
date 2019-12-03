@@ -433,9 +433,6 @@ def main_tpu(args):
             if i == last_batch_index:
                 # last batches are incomplete
                 break
-            print(i, samples[0]['net_input']['src_tokens'].shape)
-            #continue
-            metsumm('step ' + str(i))
             log_output = trainer.train_step(samples)
             xm.optimizer_step(trainer.optimizer)
             tracker.add(sum(sample['nsentences'] for sample in samples))
