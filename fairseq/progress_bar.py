@@ -13,6 +13,8 @@ from numbers import Number
 import os
 import sys
 
+import torch_xla.core.xla_model as xm
+
 from fairseq import distributed_utils
 from fairseq.meters import AverageMeter, StopwatchMeter, TimeMeter
 
@@ -46,9 +48,18 @@ def build_progress_bar(args, iterator, epoch=None, prefix=None, default='tqdm', 
                 raise ImportError("fb_tbmf_wrapper package not found.")
             g_tbmf_wrapper = fb_tbmf_wrapper
         bar = g_tbmf_wrapper(bar, args, args.log_interval)
-    elif args.tensorboard_logdir and distributed_utils.is_master(args):
+    elif (
+        (
+            args.tensorboard_logdir
+            and getattr(args, 'use_gpu', True)
+            and distributed_utils.is_master(args)
+        ) or (
+            args.tensorboard_logdir
+            and not getattr(args, 'use_gpu', True)
+            and xm.is_master_ordinal()
+        )
+    ):
         bar = tensorboard_log_wrapper(bar, args.tensorboard_logdir, args)
-
     return bar
 
 
@@ -265,6 +276,9 @@ class tensorboard_log_wrapper(progress_bar):
                   "please see README for using tensorboard. (e.g. pip install tensorboardX)")
             self.SummaryWriter = None
 
+    def __len__(self):
+        return len(self.wrapped_bar)
+
     def _writer(self, key):
         if self.SummaryWriter is None:
             return None
@@ -283,6 +297,9 @@ class tensorboard_log_wrapper(progress_bar):
         """Log intermediate stats to tensorboard."""
         self._log_to_tensorboard(stats, tag, step)
         self.wrapped_bar.log(stats, tag=tag, step=step)
+
+    def print_mid_epoch(self, i):
+        self.wrapped_bar.print_mid_epoch(i)
 
     def print(self, stats, tag='', step=None):
         """Print end-of-epoch stats."""
