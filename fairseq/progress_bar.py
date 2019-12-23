@@ -49,17 +49,18 @@ def build_progress_bar(args, iterator, epoch=None, prefix=None, default='tqdm', 
             g_tbmf_wrapper = fb_tbmf_wrapper
         bar = g_tbmf_wrapper(bar, args, args.log_interval)
     elif (
-        (
-            args.tensorboard_logdir
-            and getattr(args, 'use_gpu', True)
-            and distributed_utils.is_master(args)
-        ) or (
-            args.tensorboard_logdir
-            and not getattr(args, 'use_gpu', True)
-            and xm.is_master_ordinal()
-        )
+        args.tensorboard_logdir
+        and getattr(args, 'use_gpu', True)
+        and distributed_utils.is_master(args)
     ):
-        bar = tensorboard_log_wrapper(bar, args.tensorboard_logdir, args)
+        bar = tensorboard_log_wrapper(bar, logdir, args)
+    elif args.tensorboard_logdir and not getattr(args, 'use_gpu', True):
+        # tpu-comment: making every core have a tensorboard writer guarantees
+        #   the same work accross cores.
+        logdir = os.path.join(
+            args.tensorboard_logdir, str(xm.get_local_ordinal())
+        )
+        bar = tensorboard_log_wrapper(bar, logdir, args)
     return bar
 
 
