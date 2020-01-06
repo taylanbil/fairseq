@@ -29,8 +29,7 @@ class MaskedLmLoss(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        # FIXME: proving reduce is always True
-        assert reduce, 'OMG NON REDUCE'
+        assert reduce, 'tpu-changes assume reduce=True'
 
         # compute MLM loss
         # XXX: taylanbil: disablw all mask related stuff as it introduces atens

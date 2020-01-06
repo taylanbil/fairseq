@@ -658,9 +658,6 @@ def get_args():
     parser.add_argument('--target_valid_loss', type=float, default=None)
     parser.add_argument('--suppress_loss_report', action='store_true')
     args = options.parse_args_and_arch(parser)
-    # FIXME: debug purposes
-    if args.num_cores == 1:
-        args.num_workers = 1
     return args
 
 

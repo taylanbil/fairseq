@@ -353,9 +353,7 @@ class Trainer(object):
                 else:
                     raise e
 
-            # FIXME: clean up comment
-            #if self.xla and i < len(samples)-1:
-            if self.xla :
+            if self.xla:
                 # tpu-comment: every xla operation before marking step is
                 # appended to the IR graph, and processing too many batches
                 # before marking step can lead to OOM errors.
