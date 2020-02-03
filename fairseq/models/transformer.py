@@ -789,9 +789,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         # B x T x C -> T x B x C
         x = x.transpose(0, 1)
 
-        self_attn_padding_mask: Optional[Tensor] = None
-        if self.cross_self_attention or prev_output_tokens.eq(self.padding_idx).any():
-            self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
+        self_attn_padding_mask = prev_output_tokens.eq(self.padding_idx)
 
         # decoder layers
         attn: Optional[Tensor] = None
@@ -812,23 +810,21 @@ class TransformerDecoder(FairseqIncrementalDecoder):
                 self_attn_mask = None
 
             # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
-            dropout_probability = torch.empty(1).uniform_()
-            if not self.training or (dropout_probability > self.decoder_layerdrop):
-                x, layer_attn, _ = layer(
-                    x,
-                    encoder_state,
-                    encoder_out.encoder_padding_mask
-                    if encoder_out is not None
-                    else None,
-                    incremental_state,
-                    self_attn_mask=self_attn_mask,
-                    self_attn_padding_mask=self_attn_padding_mask,
-                    need_attn=bool((idx == alignment_layer)),
-                    need_head_weights=bool((idx == alignment_layer)),
-                )
-                inner_states.append(x)
-                if layer_attn is not None and idx == alignment_layer:
-                    attn = layer_attn.float().to(x)
+            #dropout_probability = torch.empty(1).uniform_()
+            #if not self.training or (dropout_probability > self.decoder_layerdrop):
+            x, layer_attn, _ = layer(
+                x,
+                encoder_state,
+                encoder_out.encoder_padding_mask if encoder_out is not None else None,
+                incremental_state,
+                self_attn_mask=self_attn_mask,
+                self_attn_padding_mask=self_attn_padding_mask,
+                need_attn=bool((idx == alignment_layer)),
+                need_head_weights=bool((idx == alignment_layer)),
+            )
+            inner_states.append(x)
+            if layer_attn is not None and idx == alignment_layer:
+                attn = layer_attn.float().to(x)
 
         if attn is not None:
             if alignment_heads is not None:

@@ -40,9 +40,12 @@ def init_bert_params(module):
         if module.padding_idx is not None:
             module.weight.data[module.padding_idx].zero_()
     if isinstance(module, MultiheadAttention):
-        module.q_proj.weight.data.normal_(mean=0.0, std=0.02)
-        module.k_proj.weight.data.normal_(mean=0.0, std=0.02)
-        module.v_proj.weight.data.normal_(mean=0.0, std=0.02)
+        try:
+            module.q_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.k_proj.weight.data.normal_(mean=0.0, std=0.02)
+            module.v_proj.weight.data.normal_(mean=0.0, std=0.02)
+        except:
+            module.in_proj_weight.data.normal_(mean=0.0, std=0.02)
 
 
 class TransformerSentenceEncoder(nn.Module):
@@ -108,6 +111,7 @@ class TransformerSentenceEncoder(nn.Module):
         self.apply_bert_init = apply_bert_init
         self.learned_pos_embedding = learned_pos_embedding
         self.traceable = traceable
+        self.tpu = False  # whether we're on TPU
 
         self.embed_tokens = nn.Embedding(
             self.vocab_size, self.embedding_dim, self.padding_idx
@@ -170,6 +174,9 @@ class TransformerSentenceEncoder(nn.Module):
         for layer in range(n_trans_layers_to_freeze):
             freeze_module_params(self.layers[layer])
 
+    def prepare_for_tpu_(self, **kwargs):
+        self.tpu = True
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -180,7 +187,7 @@ class TransformerSentenceEncoder(nn.Module):
 
         # compute padding mask. This is needed for multi-head attention
         padding_mask = tokens.eq(self.padding_idx)
-        if not self.traceable and not padding_mask.any():
+        if not self.traceable and not self.tpu and not padding_mask.any():
             padding_mask = None
 
         x = self.embed_tokens(tokens)
@@ -212,11 +219,11 @@ class TransformerSentenceEncoder(nn.Module):
 
         for layer in self.layers:
             # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
-            dropout_probability = random.uniform(0, 1)
-            if not self.training or (dropout_probability > self.layerdrop):
-                x, _ = layer(x, self_attn_padding_mask=padding_mask)
-                if not last_state_only:
-                    inner_states.append(x)
+            #dropout_probability = random.uniform(0, 1)
+            #if not self.training or (dropout_probability > self.layerdrop):
+            x, _ = layer(x, self_attn_padding_mask=padding_mask)
+            if not last_state_only:
+                inner_states.append(x)
 
         sentence_rep = x[0, :, :]
 

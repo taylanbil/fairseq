@@ -207,8 +207,10 @@ class FairseqTask(object):
             a :class:`~fairseq.models.BaseFairseqModel` instance
         """
         from fairseq import models
-
-        return models.build_model(args, self)
+        model = models.build_model(args, self)
+        if getattr(args, 'tpu', False):
+            model.prepare_for_tpu_()
+        return model
 
     def build_criterion(self, args):
         """

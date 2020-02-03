@@ -259,30 +259,30 @@ class TransformerDecoderLayer(nn.Module):
                 saved_state["prev_key_padding_mask"] = prev_self_attn_state[2]
             assert incremental_state is not None
             self.self_attn._set_input_buffer(incremental_state, saved_state)
-        _self_attn_input_buffer = self.self_attn._get_input_buffer(incremental_state)
-        if self.cross_self_attention and not (
-            incremental_state is not None
-            and _self_attn_input_buffer is not None
-            and "prev_key" in _self_attn_input_buffer
-        ):
-            if self_attn_mask is not None:
-                assert encoder_out is not None
-                self_attn_mask = torch.cat(
-                    (x.new_zeros(x.size(0), encoder_out.size(0)), self_attn_mask), dim=1
-                )
-            if self_attn_padding_mask is not None:
-                if encoder_padding_mask is None:
-                    assert encoder_out is not None
-                    encoder_padding_mask = self_attn_padding_mask.new_zeros(
-                        encoder_out.size(1), encoder_out.size(0)
-                    )
-                self_attn_padding_mask = torch.cat(
-                    (encoder_padding_mask, self_attn_padding_mask), dim=1
-                )
-            assert encoder_out is not None
-            y = torch.cat((encoder_out, x), dim=0)
-        else:
-            y = x
+        #_self_attn_input_buffer = self.self_attn._get_input_buffer(incremental_state)
+        #if self.cross_self_attention and not (
+        #    incremental_state is not None
+        #    and _self_attn_input_buffer is not None
+        #    and "prev_key" in _self_attn_input_buffer
+        #):
+        #    if self_attn_mask is not None:
+        #        assert encoder_out is not None
+        #        self_attn_mask = torch.cat(
+        #            (x.new_zeros(x.size(0), encoder_out.size(0)), self_attn_mask), dim=1
+        #        )
+        #    if self_attn_padding_mask is not None:
+        #        if encoder_padding_mask is None:
+        #            assert encoder_out is not None
+        #            encoder_padding_mask = self_attn_padding_mask.new_zeros(
+        #                encoder_out.size(1), encoder_out.size(0)
+        #            )
+        #        self_attn_padding_mask = torch.cat(
+        #            (encoder_padding_mask, self_attn_padding_mask), dim=1
+        #        )
+        #    assert encoder_out is not None
+        #    y = torch.cat((encoder_out, x), dim=0)
+        #else:
+        y = x
 
         x, attn = self.self_attn(
             query=x,

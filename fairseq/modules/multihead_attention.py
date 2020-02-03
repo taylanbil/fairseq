@@ -324,9 +324,9 @@ class MultiheadAttention(nn.Module):
         if key_padding_mask is not None:
             # don't attend to padding symbols
             attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
-            attn_weights = attn_weights.masked_fill(
-                key_padding_mask.unsqueeze(1).unsqueeze(2).to(torch.bool), float("-inf")
-            )
+            attn_weights = attn_weights.transpose(0, 2)
+            attn_weights = attn_weights.masked_fill(key_padding_mask, float('-inf'))
+            attn_weights = attn_weights.transpose(0, 2)
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
 
         if before_softmax:
@@ -337,7 +337,7 @@ class MultiheadAttention(nn.Module):
         )
         attn_weights = attn_weights_float.type_as(attn_weights)
         attn_probs = F.dropout(
-            attn_weights_float.type_as(attn_weights),
+            attn_weights,
             p=self.dropout,
             training=self.training,
         )
