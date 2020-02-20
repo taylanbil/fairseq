@@ -13,7 +13,10 @@ from numbers import Number
 import os
 import sys
 
+import torch
+
 import torch_xla.core.xla_model as xm
+import torch_xla.test.test_utils as test_utils
 
 from fairseq import distributed_utils
 from fairseq.meters import AverageMeter, StopwatchMeter, TimeMeter
@@ -53,14 +56,14 @@ def build_progress_bar(args, iterator, epoch=None, prefix=None, default='tqdm', 
         and getattr(args, 'use_gpu', True)
         and distributed_utils.is_master(args)
     ):
-        bar = tensorboard_log_wrapper(bar, logdir, args)
+        bar = tensorboard_log_wrapper(bar, args.tensorboard_logdir, args)
     elif args.tensorboard_logdir and not getattr(args, 'use_gpu', True):
         # tpu-comment: making every core have a tensorboard writer guarantees
         #   the same work accross cores.
         logdir = os.path.join(
             args.tensorboard_logdir, str(xm.get_local_ordinal())
         )
-        bar = tensorboard_log_wrapper(bar, logdir, args)
+        bar = tensorboard_log_wrapper_xla(bar, logdir, args)
     return bar
 
 
@@ -327,6 +330,41 @@ class tensorboard_log_wrapper(progress_bar):
             step = stats['num_updates']
         for key in stats.keys() - {'num_updates'}:
             if isinstance(stats[key], AverageMeter):
-                writer.add_scalar(key, stats[key].val, step)
+                logval = stats[key].val
+                if isinstance(logval, torch.Tensor):
+                    logval = logval.item()
+                writer.add_scalar(key, logval, step)
             elif isinstance(stats[key], Number):
                 writer.add_scalar(key, stats[key], step)
+
+
+class tensorboard_log_wrapper_xla(tensorboard_log_wrapper):
+    """
+    Pytorch/XLA OSS testing framework require tensorboard summary writers
+    to behave in a specific way. This wrapper class handles that case.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.writer_tag = 'run'
+
+    def _log_to_tensorboard(self, stats, tag='', step=None):
+        super()._log_to_tensorboard(
+            {'{}-{}'.format(tag, key): val for key, val in stats.items()},
+            tag=self.writer_tag, step=step
+        )
+
+    def log_xla_metrics(self, stats, tag='', step=None, *args, **kwargs):
+        writer = self._writer(self.writer_tag)
+        test_utils.write_to_summary(
+            summary_writer=writer, global_step=step, dict_to_write={},
+            write_xla_metrics=True,
+        )
+        writer.flush()
+
+
+def progress_bar_print(bar, stats, *args, **kwargs):
+    log_xla_metrics = kwargs.pop('log_xla_metrics', False)
+    bar.print(stats, *args, **kwargs)
+    if isinstance(bar, tensorboard_log_wrapper_xla) and log_xla_metrics:
+        bar.log_xla_metrics(stats, *args, **kwargs)

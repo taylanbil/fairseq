@@ -405,6 +405,14 @@ def main_tpu(args):
         """
         This is the main training loop. It trains for 1 epoch.
         """
+
+        def print_training_update(trainer, progress, args, i, tracker):
+            stats = get_training_stats(trainer, args=args)
+            stats['rate'] = tracker.rate()
+            stats['now'] = now()
+            progress.log(stats, tag='train', step=trainer.get_num_updates())
+            progress.print_mid_epoch(i+1, force=True)
+
         stats, log_output, skip_stat_keys = None, None, {'clip'}
         tracker = xm.RateTracker()
         for i, samples in enumerate(loader, start=epoch_itr.iterations_in_epoch):
@@ -418,13 +426,6 @@ def main_tpu(args):
             if (not (i % args.log_steps)) or (i == last_batch_index-1):
                 step_args = trainer, progress, args, i, tracker
                 xm.add_step_closure(print_training_update, args=step_args)
-
-    def print_training_update(trainer, progress, args, i, tracker):
-        stats = get_training_stats(trainer, args=args)
-        stats['rate'] = tracker.rate()
-        stats['now'] = now()
-        progress.log(stats, step=stats['num_updates'])
-        progress.print_mid_epoch(i+1, force=True)
 
     def valid_loop_fn(
         args, device, trainer, progress, loader, last_batch_index
@@ -472,8 +473,9 @@ def main_tpu(args):
             args, device, trainer, progress,
             para_loader.per_device_loader(device), len(progress) - 1
         )
-        progress.print(
-            stats, tag=subset, step=trainer.get_num_updates(), force=True
+        progress_bar.progress_bar_print(
+            progress, stats, step=trainer.get_num_updates(), force=True,
+            tag='validate-{}'.format(subset),
         )
         xm.master_print('Validated the subset "{}", {}'.format(subset, now()))
         return stats['loss'].avg
@@ -531,7 +533,10 @@ def main_tpu(args):
         )
         training_stats = get_training_stats(trainer, args=args)
         tloss = training_stats['loss'].avg.item()
-        progress.print(training_stats, tag=device, force=True)
+        progress_bar.progress_bar_print(
+            progress, training_stats, tag='train', force=True,
+            step=trainer.get_num_updates(), log_xla_metrics=True
+        )
         xm.master_print('Epoch {} end {}'.format(epoch_itr.epoch, now()))
         if args.metrics_debug:
             xm.master_print(met.metrics_report())
