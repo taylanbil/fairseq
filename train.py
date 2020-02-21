@@ -475,7 +475,7 @@ def main_tpu(args):
         )
         progress_bar.progress_bar_print(
             progress, stats, step=trainer.get_num_updates(), force=True,
-            tag='validate-{}'.format(subset),
+            tag='validate-{}'.format(subset), flush_writer=True,
         )
         xm.master_print('Validated the subset "{}", {}'.format(subset, now()))
         return stats['loss'].avg
@@ -535,7 +535,8 @@ def main_tpu(args):
         tloss = training_stats['loss'].avg.item()
         progress_bar.progress_bar_print(
             progress, training_stats, tag='train', force=True,
-            step=trainer.get_num_updates(), log_xla_metrics=True
+            step=trainer.get_num_updates(), log_xla_metrics=True,
+            flush_writer=True,
         )
         xm.master_print('Epoch {} end {}'.format(epoch_itr.epoch, now()))
         if args.metrics_debug:

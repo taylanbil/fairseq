@@ -317,6 +317,12 @@ class tensorboard_log_wrapper(progress_bar):
         self._log_to_tensorboard(stats, tag, step)
         self.wrapped_bar.print(stats, tag=tag, step=step, **kwargs)
 
+    def flush_writer(self, tag=None):
+        if tag is None:
+            return
+        writer = self._writer(tag)
+        writer.flush()
+
     def __exit__(self, *exc):
         for writer in getattr(self, '_writers', {}).values():
             writer.close()
@@ -342,16 +348,21 @@ class tensorboard_log_wrapper_xla(tensorboard_log_wrapper):
     """
     Pytorch/XLA OSS testing framework require tensorboard summary writers
     to behave in a specific way. This wrapper class handles that case.
+
+    This has one SummaryWriter, and prefixes metrics w/ "tag" before logging.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.writer_tag = 'run'
 
+    def _writer(self, *args):
+        return super()._writer(self.writer_tag)
+
     def _log_to_tensorboard(self, stats, tag='', step=None):
         super()._log_to_tensorboard(
             {'{}-{}'.format(tag, key): val for key, val in stats.items()},
-            tag=self.writer_tag, step=step
+            tag=self.writer_tag, step=step,
         )
 
     def log_xla_metrics(self, stats, tag='', step=None, *args, **kwargs):
@@ -360,11 +371,13 @@ class tensorboard_log_wrapper_xla(tensorboard_log_wrapper):
             summary_writer=writer, global_step=step, dict_to_write={},
             write_xla_metrics=True,
         )
-        writer.flush()
 
 
 def progress_bar_print(bar, stats, *args, **kwargs):
     log_xla_metrics = kwargs.pop('log_xla_metrics', False)
+    flush_writer = kwargs.pop('flush_writer', False)
     bar.print(stats, *args, **kwargs)
     if isinstance(bar, tensorboard_log_wrapper_xla) and log_xla_metrics:
         bar.log_xla_metrics(stats, *args, **kwargs)
+    if flush_writer:
+        bar.flush_writer(kwargs.get('tag'))
