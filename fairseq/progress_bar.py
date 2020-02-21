@@ -377,7 +377,8 @@ def progress_bar_print(bar, stats, *args, **kwargs):
     log_xla_metrics = kwargs.pop('log_xla_metrics', False)
     flush_writer = kwargs.pop('flush_writer', False)
     bar.print(stats, *args, **kwargs)
-    if isinstance(bar, tensorboard_log_wrapper_xla) and log_xla_metrics:
-        bar.log_xla_metrics(stats, *args, **kwargs)
-    if flush_writer:
-        bar.flush_writer(kwargs.get('tag'))
+    if isinstance(bar, tensorboard_log_wrapper_xla):
+        if log_xla_metrics:
+            bar.log_xla_metrics(stats, *args, **kwargs)
+        if flush_writer:
+            bar.flush_writer(kwargs.get('tag'))
