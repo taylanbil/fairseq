@@ -358,7 +358,11 @@ class GroupedIterator(object):
         return length
 
     def adjust_len(self, item, length):
-        itemlen = item['net_input']['src_tokens'].shape[1]
+        try:
+            itemlen = item['net_input']['src_tokens'].shape[1]
+        except KeyError:
+            # in dist. mode, sometimes the last batch is empty
+            return item
         if length == itemlen:
             return item
         bsz = item['nsentences']
