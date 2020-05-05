@@ -389,7 +389,6 @@ class Trainer(object):
                         ignore_grad=is_dummy_batch,
                     )
                     del loss
-
                 logging_outputs.append(logging_output)
                 sample_size += sample_size_i
 
@@ -439,8 +438,12 @@ class Trainer(object):
             # (sum_of_gradients / sample_size).
             if self.tpu and self.data_parallel_world_size > 1:
                 import torch_xla.core.xla_model as xm
+                import torch_xla
+                count = torch_xla._XLAC._xla_get_replication_devices_count()
+                #denom = count * sample_size
                 gradients = xm._fetch_gradients(self.optimizer.optimizer)
-                xm.all_reduce('sum', gradients, scale=1.0 / sample_size)
+                xm.all_reduce('sum', gradients, scale=1.0 / count)
+                #gradients = xm.reduce_gradients(self.optimizer.optimizer)  # doesnt compile
             elif not self.args.use_bmuf:
                 multiplier = self.data_parallel_world_size
                 self.optimizer.multiply_grads(multiplier / sample_size)

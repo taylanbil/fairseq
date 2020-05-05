@@ -22,6 +22,8 @@ from fairseq.logging import meters, metrics, progress_bar
 from fairseq.trainer import Trainer
 from fairseq.model_parallel.megatron_trainer import MegatronTrainer
 
+import torch_xla.core.xla_model as xm
+import torch_xla.debug.metrics as met
 
 logging.basicConfig(
     format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
@@ -88,7 +90,6 @@ def main(args, init_distributed=False):
     if args.tpu:
         import torch_xla.core.xla_model as xm
         xm.rendezvous('done loading checkpoint')  # wait for all workers
-        xm.mark_step()
 
     # Train until the learning rate gets too small
     max_epoch = args.max_epoch or math.inf
@@ -145,13 +146,20 @@ def tpu_data_loader(args, itr):
     import torch_xla.core.xla_model as xm
     import torch_xla.distributed.parallel_loader as pl
     xm.rendezvous('tpu_data_loader')  # wait for all workers
-    xm.mark_step()
     device = utils.get_tpu_device(args)
     return iterators.CountingIterator(
         pl.ParallelLoader(itr, [device]).per_device_loader(device),
         start=getattr(itr, 'n', 0),
         total=len(itr),
     )
+
+def metsumm(stepno=''):
+    x = met.metrics_report().split('\n')
+    for i, line in enumerate(x):
+        if 'CompileTime' in line or 'aten::' in line:
+            key = line.split()[-1]
+            value = x[i+1].split()[-1]
+            xm.master_print('step {}, key {}, value {}'.format(stepno, key, value))
 
 
 @metrics.aggregate('train')
@@ -168,7 +176,8 @@ def train(args, trainer, task, epoch_itr, max_update=math.inf):
         else args.update_freq[-1]
     )
     itr = iterators.GroupedIterator(itr, update_freq)
-    if getattr(args, 'tpu', False):
+    tpu = getattr(args, 'tpu', False)
+    if tpu:
         itr = tpu_data_loader(args, itr)
     progress = progress_bar.progress_bar(
         itr,
@@ -179,13 +188,28 @@ def train(args, trainer, task, epoch_itr, max_update=math.inf):
             args.tensorboard_logdir if distributed_utils.is_master(args) else None
         ),
         default_log_format=('tqdm' if not args.no_progress_bar else 'simple'),
+        tpu=tpu,
     )
 
     # task specific setup per epoch
     task.begin_epoch(epoch_itr.epoch, trainer.get_model())
 
     valid_subsets = args.valid_subset.split(',')
-    for samples in progress:
+    oldval = None
+    for i, samples in enumerate(progress):
+        if i == len(progress) - 1:
+            continue
+        metsumm(i)
+        #newval = met.metric_data("CompileTime")[0]
+        #if oldval is not None and newval > oldval and i > 20:
+        #    raise ValueError('compiled @ step {}'.format(i))
+        for sample in samples:
+            inpshape = sample['net_input']['src_tokens'].shape
+            tarshape = sample['target'].shape
+            if inpshape[0] != 8 or tarshape[0] != 8 or inpshape[1] != 512 or tarshape[1] != 512:
+                print('SHAPE! inp %s tar %s' % (inpshape, tarshape))
+        #continue
+        # XXX
         with metrics.aggregate('train_inner'):
             log_output = trainer.train_step(samples)
             if log_output is None:  # OOM, overflow, ...
@@ -275,7 +299,8 @@ def validate(args, trainer, task, epoch_itr, subsets):
             shard_id=args.distributed_rank,
             num_workers=args.num_workers,
         ).next_epoch_itr(shuffle=False)
-        if getattr(args, 'tpu', False):
+        tpu = getattr(args, 'tpu', False)
+        if tpu:
             itr = tpu_data_loader(args, itr)
         progress = progress_bar.progress_bar(
             itr,
@@ -287,6 +312,7 @@ def validate(args, trainer, task, epoch_itr, subsets):
                 args.tensorboard_logdir if distributed_utils.is_master(args) else None
             ),
             default_log_format=('tqdm' if not args.no_progress_bar else 'simple'),
+            tpu=tpu,
         )
 
         # create a new root metrics aggregator so validation metrics

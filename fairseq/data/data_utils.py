@@ -199,7 +199,7 @@ def filter_by_size(indices, dataset, max_positions, raise_exception=False):
 
 def batch_by_size(
     indices, num_tokens_fn, max_tokens=None, max_sentences=None,
-    required_batch_size_multiple=1,
+    required_batch_size_multiple=1, tpu=False
 ):
     """
     Yield mini-batches of indices bucketed by size. Batches may contain
@@ -231,7 +231,7 @@ def batch_by_size(
     if isinstance(indices, types.GeneratorType):
         indices = np.fromiter(indices, dtype=np.int64, count=-1)
 
-    return batch_by_size_fast(indices, num_tokens_fn, max_tokens, max_sentences, bsz_mult)
+    return batch_by_size_fast(indices, num_tokens_fn, max_tokens, max_sentences, bsz_mult, tpu=tpu)
 
 
 def process_bpe_symbol(sentence: str, bpe_symbol: str):

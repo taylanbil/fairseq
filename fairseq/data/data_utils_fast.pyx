@@ -30,6 +30,7 @@ cpdef list batch_by_size_fast(
     long max_tokens,
     long max_sentences,
     int bsz_mult,
+    int tpu,
 ):
     cdef long sample_len = 0
     cdef list sample_lens = []
@@ -63,6 +64,6 @@ cpdef list batch_by_size_fast(
             sample_lens = sample_lens[mod_len:]
             sample_len = max(sample_lens) if len(sample_lens) > 0 else 0
         batch.append(idx)
-    if len(batch) > 0:
+    if len(batch) > 0 and not tpu:
         batches.append(batch)
     return batches

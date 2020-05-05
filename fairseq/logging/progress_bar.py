@@ -33,6 +33,7 @@ def progress_bar(
     prefix: Optional[str] = None,
     tensorboard_logdir: Optional[str] = None,
     default_log_format: str = 'tqdm',
+    tpu: bool = False,
 ):
     if log_format is None:
         log_format = default_log_format
@@ -58,6 +59,9 @@ def progress_bar(
             bar = FbTbmfWrapper(bar, log_interval)
         except ImportError:
             bar = TensorboardProgressBarWrapper(bar, tensorboard_logdir)
+
+    if tpu:
+        bar = TpuProgressBar(bar)
 
     return bar
 
@@ -352,3 +356,25 @@ class TensorboardProgressBarWrapper(BaseProgressBar):
             elif isinstance(stats[key], Number):
                 writer.add_scalar(key, stats[key], step)
         writer.flush()
+
+class TpuProgressBar(object):
+
+    def __init__(self, bar):
+        self.bar = bar
+
+    def __iter__(self):
+        for _ in self.bar:
+            yield _
+
+    def __len__(self):
+        return len(self.bar)
+
+    def log(self, stats, tag=None, step=None):
+        import torch_xla.core.xla_model as xm
+        xm.add_step_closure(self.bar.log, args=(stats, tag, step))
+
+    def print(self, stats, tag=None, step=None):
+        return self.bar.print(stats, tag=tag, step=step)
+
+    def _format_stats(self, stats, epoch=None, update=None):
+        return self.bar._format_stats(stats, epoch=epoch, update=update)

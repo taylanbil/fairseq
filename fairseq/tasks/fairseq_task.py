@@ -179,6 +179,7 @@ class FairseqTask(object):
             max_tokens=max_tokens,
             max_sentences=max_sentences,
             required_batch_size_multiple=required_batch_size_multiple,
+            tpu=getattr(self.args, 'tpu', False),
         )
 
         # return a reusable, sharded iterator
