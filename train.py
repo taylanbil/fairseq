@@ -488,11 +488,11 @@ def main_tpu(args):
             prefix='valid on {} \'{}\' subset'.format(device, subset),
             no_progress_bar='simple'
         )
-        para_loader = pl.ParallelLoader(progress, [device])
+        para_loader = pl.ParallelLoader(progress, [xla_device])
         reset_validation_loss_meters(trainer)
         stats = valid_loop_fn(
             args, device, trainer, progress,
-            para_loader.per_device_loader(device), len(progress) - 1
+            para_loader.per_device_loader(xla_device), len(progress) - 1
         )
         progress.print(stats, tag=subset, step=trainer.get_num_updates())
         xm.master_print('Validated the subset "{}", {}'.format(subset, now()))
@@ -544,9 +544,9 @@ def main_tpu(args):
         if args.suppress_loss_report:
             skip_stat_keys.update({'loss', 'nll_loss', 'gnorm'})
         progress.set_keys_to_skip_mid_epoch(skip_stat_keys)
-        para_loader = pl.ParallelLoader(progress, [device])
+        para_loader = pl.ParallelLoader(progress, [xla_device])
         train_loop_fn(
-            device, trainer, para_loader.per_device_loader(device),
+            device, trainer, para_loader.per_device_loader(xla_device),
             len(progress) - 1
         )
         training_stats = get_training_stats(trainer, args=args)
