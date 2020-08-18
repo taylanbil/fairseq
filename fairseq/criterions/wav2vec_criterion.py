@@ -40,7 +40,11 @@ class Wav2vecCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
+        from fairseq.metsumm import metsumm
+        metsumm("Before forward")
         net_output = model(**sample['net_input'])
+        metsumm("After forward")
+
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
 
@@ -75,7 +79,8 @@ class Wav2vecCriterion(FairseqCriterion):
                     losses.append(p)
 
         logging_output = {
-            'loss': loss.item() if reduce else loss,
+            #'loss': losr.item() if reduce else loss,
+            'loss': loss,
             'ntokens': sample_size,
             'nsentences': sample['id'].numel(),
             'sample_size': sample_size,
@@ -87,7 +92,7 @@ class Wav2vecCriterion(FairseqCriterion):
 
         if len(losses) > 1:
             for i, l in enumerate(losses):
-                logging_output[f'loss_{i}'] = l.item()
+                logging_output[f'loss_{i}'] = l
 
         if self.infonce:
             with torch.no_grad():
@@ -99,7 +104,8 @@ class Wav2vecCriterion(FairseqCriterion):
                     max = logits.argmax(-1) == 0
                     min = logits.argmin(-1) == 0
                     both = max & min
-                    corr = max.long().sum().item() - both.long().sum().item()
+                    #corr = max.long().sum().item() - both.long().sum().item()
+                    corr = max.long().sum() - both.long().sum()
                     count = max.numel()
 
                 logging_output["correct"] = corr
@@ -132,7 +138,7 @@ class Wav2vecCriterion(FairseqCriterion):
         if total > 0:
             metrics.log_derived(
                 "accuracy",
-                lambda meters: round(meters["_correct"].sum / meters["_total"].sum, 5)
+                lambda meters: meters["_correct"].sum / meters["_total"].sum
                 if meters["_total"].sum > 0
                 else float("nan"),
             )

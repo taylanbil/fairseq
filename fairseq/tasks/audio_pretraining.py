@@ -8,7 +8,9 @@
 import os
 import sys
 
-from fairseq.data import FileAudioDataset, Dictionary, AddTargetDataset
+from fairseq.data import (
+    FileAudioDataset, Dictionary, AddTargetDataset, BucketPadLengthDataset
+)
 from . import FairseqTask, register_task
 
 
@@ -31,6 +33,14 @@ class AudioPretrainingTask(FairseqTask):
     @staticmethod
     def add_args(parser):
         """Add task-specific arguments to the parser."""
+        parser.add_argument(
+            '--num-batch-buckets', default=0, type=int,
+            help=(
+                'if >0, then bucket source and target lengths into N '
+                'buckets and pad accordingly; this is useful on TPUs '
+                'to minimize the number of compilations'
+            ),
+        )
         parser.add_argument("data", help="path to data directory")
         parser.add_argument(
             "--sample-rate",
@@ -104,6 +114,14 @@ class AudioPretrainingTask(FairseqTask):
             pad=self.args.labels is not None or self.args.enable_padding,
             normalize=self.args.normalize,
         )
+        if (self.args.num_batch_buckets < 0):
+            self.datasets[split] = BucketPadLengthDataset(
+                self.datasets[split],
+                sizes=self.datasets[split].sizes,
+                num_buckets=self.args.num_batch_buckets,
+                pad_idx=0,
+                left_pad=False,
+            )
 
         if self.args.labels:
             dict_path = os.path.join(self.args.data, f"dict.{self.args.labels}.txt")

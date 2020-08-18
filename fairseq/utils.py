@@ -252,6 +252,9 @@ def convert_padding_direction(
 
 
 def item(tensor):
+    # tpu-comment: making this a no-op for xla devices.
+    if tensor.device.type == 'xla':
+        return tensor
     if hasattr(tensor, "item"):
         return tensor.item()
     if hasattr(tensor, "__getitem__"):

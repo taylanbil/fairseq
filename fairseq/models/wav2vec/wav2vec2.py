@@ -511,10 +511,14 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         logits = torch.cosine_similarity(x.float(), targets.float(), dim=-1).type_as(x)
 
-        logits /= self.logit_temp
+        logits = logits / self.logit_temp
 
-        if neg_is_pos.any():
-            logits[1:][neg_is_pos] = float("-inf")
+        if logits.device.type == 'xla' or neg_is_pos.any():
+            # FIXME: taylan what is neg_is_pos doing? inspect.
+            import pdb
+            pdb.set_trace()
+            logits = logits + -1.0 * (2**55) * neg_is_pos
+            #logits[1:][neg_is_pos] = float("-inf")
 
         return logits
 
@@ -561,7 +565,13 @@ class Wav2Vec2Model(BaseFairseqModel):
             curr_temp = q["temp"]
             features = self.project_inp(features)
 
+        from fairseq.metsumm import metsumm
+        metsumm("Before mask...")
+
         if mask:
+            # FIXME: taylan investigate dynamicity.
+            import pdb
+            pdb.set_trace()
             x, mask_indices = self.apply_mask(features, padding_mask)
             if mask_indices is not None:
                 y = unmasked_features[mask_indices].view(unmasked_features.size(0), -1, unmasked_features.size(-1))
@@ -571,12 +581,14 @@ class Wav2Vec2Model(BaseFairseqModel):
             x = features
             y = unmasked_features
             mask_indices = None
+        metsumm("After mask...")
 
         x = self.encoder(x, padding_mask=padding_mask)
 
         if features_only:
             return {"x": x, "padding_mask": padding_mask}
 
+        metsumm("Before quantizer...")
         if self.quantizer:
             q = self.quantizer(y, produce_targets=False)
             y = q["x"]
@@ -613,14 +625,19 @@ class Wav2Vec2Model(BaseFairseqModel):
             else:
                 negs, _ = self.sample_negatives(y, y.size(1))
 
+        metsumm("After quantizer...")
+        # FIXME: taylan mask indices investigate dynamicity
+        import pdb
+        pdb.set_trace()
         x = x[mask_indices].view(x.size(0), -1, x.size(-1))
 
+        metsumm("Before Negs ...")
         if self.target_glu:
             y = self.target_glu(y)
             negs = self.target_glu(negs)
-
         x = self.final_proj(x)
         x = self.compute_preds(x, y, negs)
+        metsumm("After compute-pred ...")
 
         result = {"x": x, "padding_mask": padding_mask, "features_pen": features_pen}
 
@@ -811,7 +828,7 @@ class TransformerEncoder(nn.Module):
 
         x_conv = self.pos_conv(x.transpose(1, 2))
         x_conv = x_conv.transpose(1, 2)
-        x += x_conv
+        x = x + x_conv
 
         if not self.layer_norm_first:
             x = self.layer_norm(x)

@@ -51,6 +51,9 @@ class Meter(object):
 
 
 def safe_round(number, ndigits):
+    # FIXME: taylan revisit this
+    import pdb
+    pdb.set_trace()
     if hasattr(number, '__round__'):
         return round(number, ndigits)
     elif torch is not None and torch.is_tensor(number) and number.numel() == 1:

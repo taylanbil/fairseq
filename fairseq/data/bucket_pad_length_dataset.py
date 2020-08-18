@@ -58,13 +58,16 @@ class BucketPadLengthDataset(BaseWrapperDataset):
 
     def __getitem__(self, index):
         item = self.dataset[index]
+        source = item['source']
         bucket_size = self._bucketed_sizes[index]
-        num_pad = bucket_size - item.size(-1)
-        return F.pad(
-            item,
+        num_pad = bucket_size - source.size(-1)
+        result =  F.pad(
+            source,
             (num_pad if self.left_pad else 0, 0 if self.left_pad else num_pad),
             value=self.pad_idx,
         )
+        item['source'] = result
+        return item
 
     @property
     def sizes(self):
