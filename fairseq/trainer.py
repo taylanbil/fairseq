@@ -23,6 +23,7 @@ from fairseq.file_io import PathManager
 from fairseq.logging import meters, metrics
 from fairseq.nan_detector import NanDetector
 from fairseq.optim import lr_scheduler
+from fairseq.metsumm import metsumm
 
 
 logger = logging.getLogger(__name__)
@@ -528,6 +529,7 @@ class Trainer(object):
             try:
                 with maybe_no_sync():
                     # forward and backward
+                    metsumm("Before task.train_step")
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,
                         model=self.model,
@@ -536,6 +538,7 @@ class Trainer(object):
                         update_num=self.get_num_updates(),
                         ignore_grad=is_dummy_batch,
                     )
+                    metsumm("After task.train_step")
                     del loss
 
                 logging_outputs.append(logging_output)
@@ -608,6 +611,7 @@ class Trainer(object):
                 if utils.has_parameters(self.criterion):
                     self.optimizer.all_reduce_grads(self.criterion)
 
+            metsumm("Before Autograd-profiler-record")
             with torch.autograd.profiler.record_function("multiply-grads"):
                 # multiply gradients by (data_parallel_size / sample_size) since
                 # DDP already normalizes by the number of data parallel workers.
@@ -623,6 +627,7 @@ class Trainer(object):
             with torch.autograd.profiler.record_function("clip-grads"):
                 # clip grads
                 grad_norm = self.clip_grad_norm(self.cfg.optimization.clip_norm)
+            metsumm("After Autograd-profiler-record")
 
             # check that grad norms are consistent across workers
             # on tpu check tensor is slow
@@ -636,10 +641,10 @@ class Trainer(object):
                     # check local gradnorm single GPU case, trigger NanDetector
                     raise FloatingPointError("gradients are Nan/Inf")
 
+            metsumm("Before Optimizer-Step")
             with torch.autograd.profiler.record_function("optimizer"):
                 # take an optimization step
                 self.optimizer.step()
-
         except FloatingPointError:
             # re-run the forward and backward pass with hooks attached to print
             # out where it fails
@@ -688,7 +693,6 @@ class Trainer(object):
             if self.tpu:
                 # mark step on TPUs
                 import torch_xla.core.xla_model as xm
-
                 xm.mark_step()
 
                 # only log stats every log_interval steps
@@ -719,6 +723,7 @@ class Trainer(object):
                         sample_size,
                         grad_norm,
                     )
+                metsumm("After reduce-log-stat")
 
                 # log whenever there's an XLA compilation, since these
                 # slow down training and may indicate opportunities for
@@ -1009,6 +1014,7 @@ class Trainer(object):
         suitable when logging outputs are complex types.
         """
         if self.tpu:
+            # FIXME: taylan - all gather etc.
             raise NotImplementedError
         if ignore:
             logging_outputs = []

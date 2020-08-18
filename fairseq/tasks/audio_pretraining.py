@@ -60,7 +60,6 @@ class AudioPretrainingConfig(FairseqDataclass):
     min_sample_size: Optional[int] = field(
         default=None, metadata={"help": "min sample size to crop to for batching"}
     )
-
     # Options for reporting WER metrics during validation. Only applicable to
     # Seq2Seq models during fine-tuning
     eval_wer: bool = field(
@@ -143,6 +142,14 @@ class AudioPretrainingTask(FairseqTask):
             pad=task_cfg.labels is not None or task_cfg.enable_padding,
             normalize=task_cfg.normalize,
         )
+        if (self.args.num_batch_buckets < 0):
+            self.datasets[split] = BucketPadLengthDataset(
+                self.datasets[split],
+                sizes=self.datasets[split].sizes,
+                num_buckets=self.args.num_batch_buckets,
+                pad_idx=0,
+                left_pad=False,
+            )
 
         if task_cfg.labels:
             label_path = os.path.join(data_path, f"{split}.{task_cfg.labels}")

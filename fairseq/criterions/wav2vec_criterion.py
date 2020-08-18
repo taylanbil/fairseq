@@ -119,7 +119,8 @@ class Wav2vecCriterion(FairseqCriterion):
                     max = logits.argmax(-1) == 0
                     min = logits.argmin(-1) == 0
                     both = max & min
-                    corr = max.long().sum().item() - both.long().sum().item()
+                    #corr = max.long().sum().item() - both.long().sum().item()
+                    corr = max.long().sum() - both.long().sum()
                     count = max.numel()
 
                 logging_output["correct"] = corr

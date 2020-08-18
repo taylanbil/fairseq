@@ -327,7 +327,10 @@ def call_main(cfg: FairseqConfig, main, **kwargs):
         xmp.spawn(
             fn=distributed_main,
             args=(main, cfg, kwargs),
-            nprocs=8,  # use all 8 TPU cores
+            # tpu-comment:
+            #   8 devices in one TPU VM, is the max processes to be spawned.
+            #   The rest is driven by xm.distributed.xla_dist
+            nprocs=min(args.distributed_world_size, 8),
         )
     else:
         # single GPU main
