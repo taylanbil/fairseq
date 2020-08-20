@@ -66,6 +66,9 @@ class BucketPadLengthDataset(BaseWrapperDataset):
             value=self.pad_idx,
         )
         item['source'] = result
+        # FIXME: taylan do we return item or F.pad?
+        import pdb
+        pdb.set_trace()
         return item
 
     @property
