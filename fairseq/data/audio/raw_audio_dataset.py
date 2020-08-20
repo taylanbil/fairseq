@@ -168,6 +168,9 @@ class FileAudioDataset(RawAudioDataset):
                 self.sizes.append(sz)
         logger.info(f"loaded {len(self.fnames)}, skipped {skipped} samples")
 
+    def get_batch_shapes(self):
+        return eval(args.batch_shapes)
+
     def __getitem__(self, index):
         import soundfile as sf
 
