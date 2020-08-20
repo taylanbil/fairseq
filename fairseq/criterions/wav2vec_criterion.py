@@ -124,6 +124,9 @@ class Wav2vecCriterion(FairseqCriterion):
         nsentences = utils.item(sum(log.get('nsentences', 0) for log in logging_outputs))
         sample_size = utils.item(sum(log.get('sample_size', 0) for log in logging_outputs))
 
+        # FIXME: taylan sample_size could be a tensor, rounding could be a problem
+        import pdb
+        pdb.set_trace()
         metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_scalar('ntokens', ntokens)
         metrics.log_scalar('nsentences', nsentences)
@@ -151,6 +154,9 @@ class Wav2vecCriterion(FairseqCriterion):
                 if k.startswith('loss'):
                     metrics.log_scalar(k, val / sample_size / math.log(2), sample_size)
                 else:
+                    # FIXME: taylan, round=3 could be a problem
+                    import pdb
+                    pdb.set_trace()
                     metrics.log_scalar(k, val, round=3)
 
     @staticmethod

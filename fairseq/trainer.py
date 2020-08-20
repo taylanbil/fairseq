@@ -928,6 +928,9 @@ class Trainer(object):
 
     def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
         if grad_norm is not None:
+            # FIXME: taylan what to do here? torch.clamp?
+            import pdb
+            pdb.set_trace()
             metrics.log_speed("ups", 1., priority=100, round=2)
             metrics.log_scalar("gnorm", grad_norm, priority=400, round=3)
             if self.args.clip_norm > 0:
