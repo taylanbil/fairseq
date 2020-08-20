@@ -531,6 +531,9 @@ class Trainer(object):
             try:
                 with maybe_no_sync():
                     # forward and backward
+                    # FIXME: remove
+                    print("DEBUG_MESSAGE: Sample-Size: ", sample['net_input']['source'].size())
+
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,
                         model=self.model,
