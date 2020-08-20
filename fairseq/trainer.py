@@ -49,6 +49,8 @@ class Trainer(object):
 
         self.cfg = cfg
         self.task = task
+        self.logging_history = []
+        self.cumm_sample_size = 0
 
         # catalog shared parameters
         shared_params = _catalog_shared_params(model)
@@ -529,7 +531,6 @@ class Trainer(object):
             try:
                 with maybe_no_sync():
                     # forward and backward
-                    metsumm("Before task.train_step")
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,
                         model=self.model,
@@ -538,7 +539,6 @@ class Trainer(object):
                         update_num=self.get_num_updates(),
                         ignore_grad=is_dummy_batch,
                     )
-                    metsumm("After task.train_step")
                     del loss
 
                 logging_outputs.append(logging_output)
@@ -588,6 +588,10 @@ class Trainer(object):
 
         # gather logging outputs from all replicas
         if self._sync_stats():
+            # FIXME: taylan is this a problem for tpu?
+            # FIXME: taylan maybe backward first, then sync stats?
+            import pdb
+            pdb.set_trace()
             train_time = self._local_cumulative_training_time()
             logging_outputs, (
                 sample_size,
@@ -611,7 +615,6 @@ class Trainer(object):
                 if utils.has_parameters(self.criterion):
                     self.optimizer.all_reduce_grads(self.criterion)
 
-            metsumm("Before Autograd-profiler-record")
             with torch.autograd.profiler.record_function("multiply-grads"):
                 # multiply gradients by (data_parallel_size / sample_size) since
                 # DDP already normalizes by the number of data parallel workers.
@@ -627,7 +630,6 @@ class Trainer(object):
             with torch.autograd.profiler.record_function("clip-grads"):
                 # clip grads
                 grad_norm = self.clip_grad_norm(self.cfg.optimization.clip_norm)
-            metsumm("After Autograd-profiler-record")
 
             # check that grad norms are consistent across workers
             # on tpu check tensor is slow
@@ -641,7 +643,6 @@ class Trainer(object):
                     # check local gradnorm single GPU case, trigger NanDetector
                     raise FloatingPointError("gradients are Nan/Inf")
 
-            metsumm("Before Optimizer-Step")
             with torch.autograd.profiler.record_function("optimizer"):
                 # take an optimization step
                 self.optimizer.step()
@@ -697,6 +698,8 @@ class Trainer(object):
 
                 # only log stats every log_interval steps
                 # this causes wps to be misreported when log_interval > 1
+                self.logging_history.extend(logging_outputs)
+                self.cumm_sample_size += sample_size
                 logging_output = {}
                 if self.get_num_updates() % self.cfg.common.log_interval == 0:
                     # log memory usage
@@ -723,7 +726,8 @@ class Trainer(object):
                         sample_size,
                         grad_norm,
                     )
-                metsumm("After reduce-log-stat")
+                    self.logging_history = []
+                    self.cumm_sample_size = 0
 
                 # log whenever there's an XLA compilation, since these
                 # slow down training and may indicate opportunities for

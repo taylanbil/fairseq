@@ -142,7 +142,7 @@ class AudioPretrainingTask(FairseqTask):
             pad=task_cfg.labels is not None or task_cfg.enable_padding,
             normalize=task_cfg.normalize,
         )
-        if (self.args.num_batch_buckets < 0):
+        if self.args.num_batch_buckets > 0:
             self.datasets[split] = BucketPadLengthDataset(
                 self.datasets[split],
                 sizes=self.datasets[split].sizes,
