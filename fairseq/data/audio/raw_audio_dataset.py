@@ -151,6 +151,7 @@ class FileAudioDataset(RawAudioDataset):
             pad=pad,
             normalize=normalize,
         )
+
         self.fnames = []
 
         skipped = 0

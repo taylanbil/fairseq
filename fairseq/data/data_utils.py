@@ -362,6 +362,7 @@ def compute_mask_indices(
     no_overlap: bool = False,
     min_space: int = 0,
 ) -> np.ndarray:
+#) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Computes random mask spans for a given shape
 
@@ -497,3 +498,4 @@ def lengths_to_padding_mask(lens: torch.LongTensor) -> torch.BoolTensor:
 
 def lengths_to_mask(lens: torch.LongTensor) -> torch.BoolTensor:
     return ~lengths_to_padding_mask(lens)
+
