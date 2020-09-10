@@ -171,7 +171,7 @@ class MultiheadAttention(nn.Module):
             k = self.k_proj(key)
             v = self.v_proj(value)
 
-        q *= self.scaling
+        q = q * self.scaling
 
         if self.bias_k is not None:
             assert self.bias_v is not None

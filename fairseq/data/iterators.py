@@ -291,11 +291,108 @@ class GroupedIterator(object):
     def __iter__(self):
         return self
 
+    def get_len(self):
+        lengths = [
+            (11, 288),
+            (12, 368),
+            (13, 368),
+            (14, 544),
+            (15, 624),
+            (16, 664),
+            (17, 716),
+            (18, 972),
+            (19, 1160),
+            (20, 1392),
+            (21, 1488),
+            (22, 1976),
+            (23, 2376),
+            (24, 2656),
+            (25, 3312),
+            (26, 4024),
+            (27, 4928),
+            (28, 5464),
+            (29, 6032),
+            (30, 6752),
+            (31, 8312),
+            (32, 9344),
+            (33, 11040),
+            (34, 12792),
+            (35, 15640),
+            (36, 18664),
+            (37, 22264),
+            (38, 26816),
+            (39, 33548),
+            (40, 41364),
+            (41, 51440),
+            (42, 65664),
+            (43, 83984),
+            (44, 109008),
+            (45, 140025),
+            (46, 182023),
+            (47, 233128),
+            (48, 305928),
+            (49, 436128),
+            (50, 597247),
+            (51, 202808)
+        ]
+        lengths = np.array(lengths)
+        p = lengths[:, 1]
+        p = p / p.sum()
+        length = np.random.choice(lengths[:, 0], p=p)
+        lower, upper = length*10, min(511, length*10+10)
+        length = np.random.randint(lower, upper)
+        return length
+
+
+    def adjust_len(self, item, length):
+        try:
+            itemlen = max(item['net_input']['src_lengths'])
+        except KeyError:
+            # in dist. mode, sometimes the last batch is empty
+            return item
+        if length == itemlen:
+            return item
+        bsz = item['nsentences']
+        # ntokens
+        item['ntokens'] = length * bsz
+        # srclens
+        item['net_input']['src_lengths'] = torch.tensor([length]*bsz)
+        if length > itemlen:
+            # srctokens
+            x = item['net_input']['src_tokens']
+            lasttokens = x[:, itemlen-1].clone()
+            x[:, length-1] = lasttokens
+            x[:, itemlen-1:length-1] = torch.randint(10, 10000, (bsz, length-itemlen))
+            # target
+            x = item['target']
+            lasttokens = x[:, itemlen-1].clone()
+            x[:, itemlen-1:] = 1
+            x[:, length-1] = lasttokens
+        else:
+            # srctokens
+            x = item['net_input']['src_tokens']
+            x[:, length:] = 1
+            x[:, length-1] = 2
+            # target
+            x = item['target']
+            x[:, length-1:] = 1
+        return item
+
     def __next__(self):
         chunk = []
         try:
             for _ in range(self.chunk_size):
-                chunk.append(next(self.itr))
+                length = self.get_len()
+                item = next(self.itr)
+                item = self.adjust_len(item, length)
+                try:
+                    if item['net_input']['src_tokens'].shape[1] != 512:
+                        raise ValueError(
+                            str(item['net_input']['src_tokens'].shape[1])
+                        )
+                except KeyError:
+                    pass
+                chunk.append(item)
         except StopIteration as e:
             if len(chunk) == 0:
                 raise e
