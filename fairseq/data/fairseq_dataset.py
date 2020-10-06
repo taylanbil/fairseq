@@ -124,9 +124,8 @@ class FairseqDataset(torch.utils.data.Dataset, EpochListening):
 
 
 class FairseqIterableDataset(torch.utils.data.IterableDataset, EpochListening):
-    """
-    For datasets that need to be read sequentially, usually because the data is
-    being streamed or otherwise can't be manipulated on a single machine.
+    """For datasets that need to be read sequentially, usually because the data
+    is being streamed or otherwise can't be manipulated on a single machine.
     """
 
     def __iter__(self):

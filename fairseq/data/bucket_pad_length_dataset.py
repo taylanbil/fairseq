@@ -61,15 +61,11 @@ class BucketPadLengthDataset(BaseWrapperDataset):
         source = item['source']
         bucket_size = self._bucketed_sizes[index]
         num_pad = bucket_size - source.size(-1)
-        result =  F.pad(
+        item['source'] = F.pad(
             source,
             (num_pad if self.left_pad else 0, 0 if self.left_pad else num_pad),
             value=self.pad_idx,
         )
-        item['source'] = result
-        # FIXME: taylan do we return item or F.pad?
-        import pdb
-        pdb.set_trace()
         return item
 
     @property

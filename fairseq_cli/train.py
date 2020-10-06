@@ -106,9 +106,7 @@ def main(args):
     extra_state, epoch_itr = checkpoint_utils.load_checkpoint(args, trainer)
     if args.tpu:
         import torch_xla.core.xla_model as xm
-
         xm.rendezvous("load_checkpoint")  # wait for all workers
-        xm.mark_step()
 
     # Train until the learning rate gets too small
     max_epoch = args.max_epoch or math.inf
@@ -167,7 +165,6 @@ def tpu_data_loader(args, itr):
     import torch_xla.distributed.parallel_loader as pl
 
     xm.rendezvous("tpu_data_loader")  # wait for all workers
-    xm.mark_step()
     device = utils.get_tpu_device(args)
     return iterators.CountingIterator(
         pl.ParallelLoader(itr, [device]).per_device_loader(device),
@@ -211,9 +208,12 @@ def train(args, trainer, task, epoch_itr):
     should_stop = False
     num_updates = trainer.get_num_updates()
     for i, samples in enumerate(progress):
+
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
         ):
+            # FIXME: first iterate and check bszs
+            raise RuntimeError('first iterate and check bszs')
             log_output = trainer.train_step(samples)
             if log_output is None:  # OOM, overflow, ...
                 continue
