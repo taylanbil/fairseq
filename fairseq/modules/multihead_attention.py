@@ -93,8 +93,6 @@ class MultiheadAttention(nn.Module):
         self.onnx_trace = True
 
     def prepare_for_tpu_(self, **kwargs):
-        print('PREPARING FOR TPU, DELETE ME WHEN U SEE DIS')
-        raise
         self.tpu = True
 
     def reset_parameters(self):

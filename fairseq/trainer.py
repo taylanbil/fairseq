@@ -23,7 +23,6 @@ from fairseq.file_io import PathManager
 from fairseq.logging import meters, metrics
 from fairseq.nan_detector import NanDetector
 from fairseq.optim import lr_scheduler
-from fairseq.metsumm import metsumm
 
 
 logger = logging.getLogger(__name__)
@@ -531,8 +530,6 @@ class Trainer(object):
             try:
                 with maybe_no_sync():
                     # forward and backward
-                    # FIXME: remove
-                    print("DEBUG_MESSAGE: Sample-Size: ", sample['net_input']['source'].size())
 
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,

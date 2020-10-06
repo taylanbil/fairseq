@@ -120,6 +120,9 @@ def main(cfg: DictConfig) -> None:
         # don't cache epoch iterators for sharded datasets
         disable_iterator_cache=task.has_sharded_data("train"),
     )
+    if args.tpu:
+        import torch_xla.core.xla_model as xm
+        xm.rendezvous("load_checkpoint")  # wait for all workers
 
     max_epoch = cfg.optimization.max_epoch or math.inf
     lr = trainer.get_lr()
@@ -173,6 +176,22 @@ def should_stop_early(cfg: DictConfig, valid_loss: float) -> bool:
             return False
 
 
+<<<<<<< HEAD
+=======
+def tpu_data_loader(args, itr):
+    import torch_xla.core.xla_model as xm
+    import torch_xla.distributed.parallel_loader as pl
+
+    xm.rendezvous("tpu_data_loader")  # wait for all workers
+    device = utils.get_tpu_device(args)
+    return iterators.CountingIterator(
+        pl.ParallelLoader(itr, [device]).per_device_loader(device),
+        start=getattr(itr, "n", 0),
+        total=len(itr),
+    )
+
+
+>>>>>>> Minor improvements
 @metrics.aggregate("train")
 def train(
     cfg: DictConfig, trainer: Trainer, task: tasks.FairseqTask, epoch_itr
@@ -213,9 +232,12 @@ def train(
     should_stop = False
     num_updates = trainer.get_num_updates()
     for i, samples in enumerate(progress):
+
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
         ):
+            # FIXME: first iterate and check bszs
+            raise RuntimeError('first iterate and check bszs')
             log_output = trainer.train_step(samples)
 
         if log_output is not None:  # not OOM, overflow, ...
