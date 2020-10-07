@@ -29,6 +29,8 @@ class BucketPadLengthDataset(BaseWrapperDataset):
         num_buckets,
         pad_idx,
         left_pad,
+        lambda_get=None,
+        lambda_set=None,
     ):
         super().__init__(dataset)
         self.pad_idx = pad_idx
@@ -54,18 +56,25 @@ class BucketPadLengthDataset(BaseWrapperDataset):
             return sizes
 
         self._bucketed_sizes = get_bucketed_sizes(sizes, self.buckets)
+        self._get_tensor = (lambda x: x) if lambda_get is None else lambda_get
+        self._set_tensor = (
+            (lambda item, val: val) if lambda_set is None else lambda_set
+        )
 
-    def __getitem__(self, index):
-        item = self.dataset[index]
-        source = item['source']
-        bucket_size = self._bucketed_sizes[index]
-        num_pad = bucket_size - source.size(-1)
-        item['source'] = F.pad(
-            source,
+    def _pad(self, tensor, bucket_size, dim=-1):
+        num_pad = bucket_size - tensor.size(dim)
+        return F.pad(
+            tensor,
             (num_pad if self.left_pad else 0, 0 if self.left_pad else num_pad),
             value=self.pad_idx,
         )
-        return item
+
+    def __getitem__(self, index):
+        item = self.dataset[index]
+        bucket_size = self._bucketed_sizes[index]
+        tensor = self._get_tensor(item)
+        padded = self._pad(tensor, bucket_size)
+        return self._set_tensor(item, padded)
 
     @property
     def sizes(self):
