@@ -141,13 +141,15 @@ class AudioPretrainingTask(FairseqTask):
             min_length=self.cfg.min_sample_size,
             pad=task_cfg.labels is not None or task_cfg.enable_padding,
             normalize=task_cfg.normalize,
-            num_batch_buckets=self.cfg.num_batch_buckets
+            num_batch_buckets=self.cfg.num_batch_buckets,
+            compute_mask_indices=self.args.tpu,
         )
-        if self.args.num_batch_buckets > 0:
+        if self.args.num_batch_buckets > 0 or self.args.tpu:
+            # Always bucket for tpus.
             self.datasets[split] = BucketPadLengthDataset(
                 self.datasets[split],
                 sizes=self.datasets[split].sizes,
-                num_buckets=self.args.num_batch_buckets,
+                num_buckets=self.args.num_batch_buckets or 1,
                 pad_idx=0,
                 left_pad=False,
                 lambda_get=lambda item: item['source'],
