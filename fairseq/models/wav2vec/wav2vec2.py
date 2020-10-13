@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from typing import List, Tuple
 
 from fairseq import utils
-from fairseq.data.data_utils import compute_mask_indices
+from fairseq.data.data_utils import compute_mask_indices, index_put
 from fairseq.models import BaseFairseqModel, register_model, register_model_architecture
 from fairseq.modules import (
     Fp32GroupNorm,
@@ -405,43 +405,48 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         return cls(args)
 
-    def apply_mask(self, x, padding_mask):
+    def apply_mask(
+        self, x, padding_mask,
+        mask_indices=None, mask_channel_indices=None,
+    ):
         B, T, C = x.shape
         if self.mask_prob > 0:
-            mask_indices = compute_mask_indices(
-                (B, T),
-                padding_mask,
-                self.mask_prob,
-                self.mask_length,
-                self.mask_selection,
-                self.mask_other,
-                min_masks=2,
-                no_overlap=self.no_mask_overlap,
-                min_space=self.mask_min_space,
-            )
-            mask_indices = torch.from_numpy(mask_indices).to(x.device)
-            x[mask_indices] = self.mask_emb
+            if mask_indices is None:
+                mask_indices = compute_mask_indices(
+                    (B, T),
+                    padding_mask,
+                    self.mask_prob,
+                    self.mask_length,
+                    self.mask_selection,
+                    self.mask_other,
+                    min_masks=2,
+                    no_overlap=self.no_mask_overlap,
+                    min_space=self.mask_min_space,
+                )
+                mask_indices = torch.from_numpy(mask_indices).to(x.device)
+            x = index_put(x, mask_indices, self.mask_emb)
         else:
             mask_indices = None
 
         if self.mask_channel_prob > 0:
-            mask_channel_indices = compute_mask_indices(
-                (B, C),
-                None,
-                self.mask_channel_prob,
-                self.mask_channel_length,
-                self.mask_channel_selection,
-                self.mask_channel_other,
-                no_overlap=self.no_mask_channel_overlap,
-                min_space=self.mask_channel_min_space,
-            )
-            mask_channel_indices = (
-                torch.from_numpy(mask_channel_indices)
-                .to(x.device)
-                .unsqueeze(1)
-                .expand(-1, T, -1)
-            )
-            x[mask_channel_indices] = 0
+            if mask_channel_indices is None:
+                mask_channel_indices = compute_mask_indices(
+                    (B, C),
+                    None,
+                    self.mask_channel_prob,
+                    self.mask_channel_length,
+                    self.mask_channel_selection,
+                    self.mask_channel_other,
+                    no_overlap=self.no_mask_channel_overlap,
+                    min_space=self.mask_channel_min_space,
+                )
+                mask_channel_indices = (
+                    torch.from_numpy(mask_channel_indices)
+                    .to(x.device)
+                    .unsqueeze(1)
+                    .expand(-1, T, -1)
+                )
+            x = index_put(x, mask_channel_indices, 0)
 
         return x, mask_indices
 
@@ -522,7 +527,13 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         return logits
 
-    def forward(self, source, padding_mask=None, mask=True, features_only=False):
+    def forward(
+        self, source, padding_mask=None, mask=True, features_only=False,
+        mask_indices=None, mask_channel_indices=None,
+    ):
+        import pdb
+        pdb.set_trace()
+
         if self.feature_grad_mult > 0:
             features = self.feature_extractor(source)
             if self.feature_grad_mult != 1.0:
@@ -568,10 +579,11 @@ class Wav2Vec2Model(BaseFairseqModel):
         metsumm("Before mask...")
 
         if mask:
-            # FIXME: taylan investigate dynamicity.
-            import pdb
-            pdb.set_trace()
-            x, mask_indices = self.apply_mask(features, padding_mask)
+            x, mask_indices = self.apply_mask(
+                features, padding_mask,
+                mask_indices=mask_indices,
+                mask_channel_indices=mask_channel_indices,
+            )
             if mask_indices is not None:
                 y = unmasked_features[mask_indices].view(unmasked_features.size(0), -1, unmasked_features.size(-1))
             else:
