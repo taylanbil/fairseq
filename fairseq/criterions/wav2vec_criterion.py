@@ -40,10 +40,9 @@ class Wav2vecCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        from fairseq.metsumm import metsumm
-        metsumm("Before forward")
+        # FIXME: taylan clean metsumm
+        from fairseq.metsumm import metsumm; metsumm("Before forward")
         net_output = model(**sample['net_input'])
-        metsumm("After forward")
 
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
@@ -61,7 +60,11 @@ class Wav2vecCriterion(FairseqCriterion):
         else:
             loss = F.binary_cross_entropy_with_logits(logits, target.float(), weights, reduction="sum" if reduce else "none",)
 
-        sample_size = target.numel() if self.infonce else target.long().sum().item()
+        if 'mask_indices' in sample['net_input'] and self.infonce:
+            # XXX: what happens if not self.infonce?
+            sample_size = sample['net_input']['mask_indices'].sum()
+        else:
+            sample_size = target.numel() if self.infonce else target.long().sum()
         losses.append(loss)
 
         if self.loss_weights is not None:
@@ -112,6 +115,8 @@ class Wav2vecCriterion(FairseqCriterion):
                 logging_output["count"] = count
 
         if log_pred:
+            # FIXME: taylan remove this.
+            raise
             logging_output['logits'] = logits.cpu().numpy()
             logging_output['target'] = target.cpu().numpy()
         return loss, sample_size, logging_output
@@ -124,9 +129,6 @@ class Wav2vecCriterion(FairseqCriterion):
         nsentences = utils.item(sum(log.get('nsentences', 0) for log in logging_outputs))
         sample_size = utils.item(sum(log.get('sample_size', 0) for log in logging_outputs))
 
-        # FIXME: taylan sample_size could be a tensor, rounding could be a problem
-        import pdb
-        pdb.set_trace()
         metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
         metrics.log_scalar('ntokens', ntokens)
         metrics.log_scalar('nsentences', nsentences)
@@ -155,6 +157,7 @@ class Wav2vecCriterion(FairseqCriterion):
                     metrics.log_scalar(k, val / sample_size / math.log(2), sample_size)
                 else:
                     # FIXME: taylan, round=3 could be a problem
+                    # XXX: we dont hit this in this workload
                     import pdb
                     pdb.set_trace()
                     metrics.log_scalar(k, val, round=3)

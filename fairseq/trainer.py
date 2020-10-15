@@ -39,8 +39,6 @@ class Trainer(object):
     def __init__(self, args, task, model, criterion, quantizer=None):
         self.args = args
         self.task = task
-        self.logging_history = []
-        self.cumm_sample_size = 0
 
         # catalog shared parameters
         shared_params = _catalog_shared_params(model)
@@ -483,6 +481,7 @@ class Trainer(object):
         if self._sync_stats():
             # FIXME: taylan is this a problem for tpu?
             # FIXME: taylan maybe backward first, then sync stats?
+            # XXX: this never gets hit in this workload
             import pdb
             pdb.set_trace()
             train_time = self._local_cumulative_training_time()
@@ -558,8 +557,6 @@ class Trainer(object):
 
                 # only log stats every log_interval steps
                 # this causes wps to be misreported when log_interval > 1
-                self.logging_history.extend(logging_outputs)
-                self.cumm_sample_size += sample_size
                 logging_output = {}
                 if self.get_num_updates() % self.args.log_interval == 0:
                     import torch_xla.core.xla_model as xm
@@ -567,8 +564,12 @@ class Trainer(object):
                     logging_output = self._reduce_and_log_stats(
                         logging_outputs, sample_size, grad_norm,
                     )
-                    self.logging_history = []
-                    self.cumm_sample_size = 0
+                    xm.mark_step()
+                    # XXX: when I put step closure, logging outputs is shrunk..
+                    #xm.add_step_closure(
+                    #    self._reduce_and_log_stats,
+                    #    args=(logging_outputs, sample_size, grad_norm)
+                    #)
 
                 # log whenever there's an XLA compilation, since these
                 # slow down training and may indicate opportunities for
@@ -605,7 +606,6 @@ class Trainer(object):
             self._dummy_batch = sample
         if self.tpu:
             import torch_xla.core.xla_model as xm
-            xm.rendezvous('valid_step')  # wait for all workers
             xm.mark_step()
 
         with torch.no_grad():
@@ -815,6 +815,8 @@ class Trainer(object):
         *extra_stats_to_sum,
         ignore=False,
     ):
+        import pdb
+        pdb.set_trace()
         if self.task.__class__.logging_outputs_can_be_summed(self.get_criterion()):
             return self._fast_stat_sync_sum(
                 logging_outputs, *extra_stats_to_sum, ignore=ignore
@@ -924,10 +926,11 @@ class Trainer(object):
                 )
 
     def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
-        if grad_norm is not None:
-            # FIXME: taylan what to do here? torch.clamp?
-            import pdb
-            pdb.set_trace()
+        # tpu-comment: grad_norm is a tensor in XLA
+        if (
+            (not torch.is_tensor(grad_norm) and grad_norm is not None)
+            or (torch.is_tensor(grad_norm) and not torch.isnan(grad_norm))
+        ):
             metrics.log_speed("ups", 1., priority=100, round=2)
             metrics.log_scalar("gnorm", grad_norm, priority=400, round=3)
             if self.args.clip_norm > 0:

@@ -252,6 +252,8 @@ def all_gather_list(data, group=None, max_size=16384):
 
     all_reduce(buffer, group=group)
 
+    # FIXME: taylan remogve
+    raise
     buffer = buffer.cpu()
     try:
         result = []

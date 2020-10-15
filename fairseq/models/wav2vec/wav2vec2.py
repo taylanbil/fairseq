@@ -519,11 +519,13 @@ class Wav2Vec2Model(BaseFairseqModel):
         logits = logits / self.logit_temp
 
         if logits.device.type == 'xla' or neg_is_pos.any():
-            # FIXME: taylan what is neg_is_pos doing? inspect.
-            import pdb
-            pdb.set_trace()
-            logits = logits + -1.0 * (2**55) * neg_is_pos
+            #pass
+            fillval = float(2**30)
+            if not hasattr(self, '_inftensor'):
+                self._inftensor = torch.tensor(fillval).to(x.device)
+            logits[1:] = index_put(logits[1:], neg_is_pos, self._inftensor)
             #logits[1:][neg_is_pos] = float("-inf")
+            #logits[1:] = index_put(logits[1:], neg_is_pos, fillval)
 
         return logits
 
@@ -531,8 +533,6 @@ class Wav2Vec2Model(BaseFairseqModel):
         self, source, padding_mask=None, mask=True, features_only=False,
         mask_indices=None, mask_channel_indices=None,
     ):
-        import pdb
-        pdb.set_trace()
 
         if self.feature_grad_mult > 0:
             features = self.feature_extractor(source)
@@ -575,31 +575,30 @@ class Wav2Vec2Model(BaseFairseqModel):
             curr_temp = q["temp"]
             features = self.project_inp(features)
 
-        from fairseq.metsumm import metsumm
-        metsumm("Before mask...")
-
         if mask:
             x, mask_indices = self.apply_mask(
                 features, padding_mask,
                 mask_indices=mask_indices,
                 mask_channel_indices=mask_channel_indices,
             )
-            if mask_indices is not None:
-                y = unmasked_features[mask_indices].view(unmasked_features.size(0), -1, unmasked_features.size(-1))
+            if x.device.type != 'xla' and mask_indices is not None:
+                # tpu-comment: reducing the size in a dynamic way causes
+                # too many recompilations on xla.
+                y = unmasked_features[mask_indices].view(
+                    unmasked_features.size(0), -1, unmasked_features.size(-1)
+                )
             else:
                 y = unmasked_features
         else:
             x = features
             y = unmasked_features
             mask_indices = None
-        metsumm("After mask...")
 
         x = self.encoder(x, padding_mask=padding_mask)
 
         if features_only:
             return {"x": x, "padding_mask": padding_mask}
 
-        metsumm("Before quantizer...")
         if self.quantizer:
             q = self.quantizer(y, produce_targets=False)
             y = q["x"]
@@ -636,19 +635,16 @@ class Wav2Vec2Model(BaseFairseqModel):
             else:
                 negs, _ = self.sample_negatives(y, y.size(1))
 
-        metsumm("After quantizer...")
-        # FIXME: taylan mask indices investigate dynamicity
-        import pdb
-        pdb.set_trace()
-        x = x[mask_indices].view(x.size(0), -1, x.size(-1))
+        if x.device.type != 'xla':
+            # tpu-comment: reducing the size in a dynamic way causes
+            # too many recompilations on xla.
+            x = x[mask_indices].view(x.size(0), -1, x.size(-1))
 
-        metsumm("Before Negs ...")
         if self.target_glu:
             y = self.target_glu(y)
             negs = self.target_glu(negs)
         x = self.final_proj(x)
         x = self.compute_preds(x, y, negs)
-        metsumm("After compute-pred ...")
 
         result = {"x": x, "padding_mask": padding_mask, "features_pen": features_pen}
 
