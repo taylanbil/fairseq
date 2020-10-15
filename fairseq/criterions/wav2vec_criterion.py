@@ -75,7 +75,11 @@ class Wav2vecCriterion(FairseqCriterion):
                 reduction="sum" if reduce else "none",
             )
 
-        sample_size = target.numel() if self.infonce else target.long().sum().item()
+        if 'mask_indices' in sample['net_input'] and self.infonce:
+            # XXX: what happens if not self.infonce?
+            sample_size = sample['net_input']['mask_indices'].sum()
+        else:
+            sample_size = target.numel() if self.infonce else target.long().sum().item()
         losses.append(loss.detach().clone())
 
         if self.loss_weights is not None:
@@ -126,11 +130,20 @@ class Wav2vecCriterion(FairseqCriterion):
                 logging_output["correct"] = corr
                 logging_output["count"] = count
 
+<<<<<<< HEAD
+=======
+        if log_pred:
+            # FIXME: taylan remove this.
+            raise
+            logging_output['logits'] = logits.cpu().numpy()
+            logging_output['target'] = target.cpu().numpy()
+>>>>>>> Remove dynamism, apply mask correctly, add some guardrails, some cleanups.
         return loss, sample_size, logging_output
 
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training."""
+<<<<<<< HEAD
         loss_sum = utils.item(sum(log.get("loss", 0) for log in logging_outputs))
         ntokens = utils.item(sum(log.get("ntokens", 0) for log in logging_outputs))
         nsentences = utils.item(
@@ -145,6 +158,16 @@ class Wav2vecCriterion(FairseqCriterion):
         )
         metrics.log_scalar("ntokens", ntokens)
         metrics.log_scalar("nsentences", nsentences)
+=======
+        loss_sum = utils.item(sum(log.get('loss', 0) for log in logging_outputs))
+        ntokens = utils.item(sum(log.get('ntokens', 0) for log in logging_outputs))
+        nsentences = utils.item(sum(log.get('nsentences', 0) for log in logging_outputs))
+        sample_size = utils.item(sum(log.get('sample_size', 0) for log in logging_outputs))
+
+        metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
+        metrics.log_scalar('ntokens', ntokens)
+        metrics.log_scalar('nsentences', nsentences)
+>>>>>>> Remove dynamism, apply mask correctly, add some guardrails, some cleanups.
 
         correct = sum(log.get("correct", 0) for log in logging_outputs)
         metrics.log_scalar("_correct", correct)
@@ -179,7 +202,15 @@ class Wav2vecCriterion(FairseqCriterion):
                         k, val / sample_size / math.log(2), sample_size, round=3
                     )
                 else:
+<<<<<<< HEAD
                     metrics.log_scalar(k, val / len(logging_outputs), round=3)
+=======
+                    # FIXME: taylan, round=3 could be a problem
+                    # XXX: we dont hit this in this workload
+                    import pdb
+                    pdb.set_trace()
+                    metrics.log_scalar(k, val, round=3)
+>>>>>>> Remove dynamism, apply mask correctly, add some guardrails, some cleanups.
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:

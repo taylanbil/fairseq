@@ -48,8 +48,6 @@ class Trainer(object):
 
         self.cfg = cfg
         self.task = task
-        self.logging_history = []
-        self.cumm_sample_size = 0
 
         # catalog shared parameters
         shared_params = _catalog_shared_params(model)
@@ -590,6 +588,7 @@ class Trainer(object):
         if self._sync_stats():
             # FIXME: taylan is this a problem for tpu?
             # FIXME: taylan maybe backward first, then sync stats?
+            # XXX: this never gets hit in this workload
             import pdb
             pdb.set_trace()
             train_time = self._local_cumulative_training_time()
@@ -698,8 +697,6 @@ class Trainer(object):
 
                 # only log stats every log_interval steps
                 # this causes wps to be misreported when log_interval > 1
-                self.logging_history.extend(logging_outputs)
-                self.cumm_sample_size += sample_size
                 logging_output = {}
                 if self.get_num_updates() % self.cfg.common.log_interval == 0:
                     # log memory usage
@@ -726,8 +723,12 @@ class Trainer(object):
                         sample_size,
                         grad_norm,
                     )
-                    self.logging_history = []
-                    self.cumm_sample_size = 0
+                    xm.mark_step()
+                    # XXX: when I put step closure, logging outputs is shrunk..
+                    #xm.add_step_closure(
+                    #    self._reduce_and_log_stats,
+                    #    args=(logging_outputs, sample_size, grad_norm)
+                    #)
 
                 # log whenever there's an XLA compilation, since these
                 # slow down training and may indicate opportunities for
@@ -770,7 +771,6 @@ class Trainer(object):
         """Do forward pass in evaluation mode."""
         if self.tpu:
             import torch_xla.core.xla_model as xm
-
             xm.rendezvous("valid_step")  # wait for all workers
             xm.mark_step()
 
@@ -998,6 +998,8 @@ class Trainer(object):
         *extra_stats_to_sum,
         ignore=False,
     ):
+        import pdb
+        pdb.set_trace()
         if self.task.__class__.logging_outputs_can_be_summed(self.get_criterion()):
             return self._fast_stat_sync_sum(
                 logging_outputs, *extra_stats_to_sum, ignore=ignore
