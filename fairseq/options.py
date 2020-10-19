@@ -238,6 +238,7 @@ def get_parser(desc, default_task="translation"):
                         help='pseudo random number generator seed')
     parser.add_argument('--cpu', action='store_true', help='use CPU instead of CUDA')
     parser.add_argument('--tpu', action='store_true', help='use TPU instead of CUDA')
+    parser.add_argument('--xla-metrics-debug', action='store_true', help='Print XLA debug info')
     parser.add_argument('--bf16', action='store_true', help='use bfloat16; implies --tpu')
     parser.add_argument('--fp16', action='store_true', help='use FP16')
     parser.add_argument('--memory-efficient-bf16', action='store_true',

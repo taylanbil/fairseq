@@ -479,11 +479,7 @@ class Trainer(object):
 
         # gather logging outputs from all replicas
         if self._sync_stats():
-            # FIXME: taylan is this a problem for tpu?
-            # FIXME: taylan maybe backward first, then sync stats?
-            # XXX: this never gets hit in this workload
-            import pdb
-            pdb.set_trace()
+            # FIXME: taylan this is not hit in 1 core. revisit when running 8 cores
             train_time = self._local_cumulative_training_time()
             logging_outputs, (sample_size, ooms, total_train_time) = self._aggregate_logging_outputs(
                 logging_outputs, sample_size, ooms, train_time, ignore=is_dummy_batch,
@@ -560,7 +556,9 @@ class Trainer(object):
                 logging_output = {}
                 if self.get_num_updates() % self.args.log_interval == 0:
                     import torch_xla.core.xla_model as xm
+                    from fairseq.utils import xla_device_to_cpu
                     xm.mark_step()
+                    logging_outputs = xla_device_to_cpu(logging_outputs)
                     logging_output = self._reduce_and_log_stats(
                         logging_outputs, sample_size, grad_norm,
                     )
@@ -789,8 +787,9 @@ class Trainer(object):
         utils.set_torch_seed(seed)
 
     def _sync_stats(self):
-        # Return True if it's using multiple GPUs and DDP or multiple GPUs with
-        # BMUF and it's a bmuf sync with warmup iterations completed before.
+        # Return True if it's using multiple devices and DDP
+        # or multiple devices with BMUF and it's a bmuf sync
+        #   with warmup iterations completed before.
         if self.data_parallel_world_size == 1:
             return False
         elif self.args.use_bmuf:
@@ -815,8 +814,6 @@ class Trainer(object):
         *extra_stats_to_sum,
         ignore=False,
     ):
-        import pdb
-        pdb.set_trace()
         if self.task.__class__.logging_outputs_can_be_summed(self.get_criterion()):
             return self._fast_stat_sync_sum(
                 logging_outputs, *extra_stats_to_sum, ignore=ignore
@@ -837,7 +834,6 @@ class Trainer(object):
         suitable when logging outputs are complex types.
         """
         if self.tpu:
-            # FIXME: taylan - all gather etc.
             raise NotImplementedError
         if ignore:
             logging_outputs = []

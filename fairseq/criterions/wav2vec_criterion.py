@@ -83,7 +83,7 @@ class Wav2vecCriterion(FairseqCriterion):
 
         logging_output = {
             #'loss': losr.item() if reduce else loss,
-            'loss': loss,
+            'loss': loss.detach(),
             'ntokens': sample_size,
             'nsentences': sample['id'].numel(),
             'sample_size': sample_size,
@@ -95,7 +95,7 @@ class Wav2vecCriterion(FairseqCriterion):
 
         if len(losses) > 1:
             for i, l in enumerate(losses):
-                logging_output[f'loss_{i}'] = l
+                logging_output[f'loss_{i}'] = l.detach()
 
         if self.infonce:
             with torch.no_grad():
@@ -114,9 +114,7 @@ class Wav2vecCriterion(FairseqCriterion):
                 logging_output["correct"] = corr
                 logging_output["count"] = count
 
-        if log_pred:
-            # FIXME: taylan remove this.
-            raise
+        if log_pred and logits.device.type != 'xla':
             logging_output['logits'] = logits.cpu().numpy()
             logging_output['target'] = target.cpu().numpy()
         return loss, sample_size, logging_output
@@ -169,4 +167,4 @@ class Wav2vecCriterion(FairseqCriterion):
         across workers prior to calling `reduce_metrics`. Setting this
         to True will improves distributed training speed.
         """
-        return False
+        return True

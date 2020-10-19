@@ -124,13 +124,7 @@ class AudioPretrainingTask(FairseqTask):
                 num_buckets=self.args.num_batch_buckets or 1,
                 pad_idx=0,
                 left_pad=False,
-                lambda_get=lambda item: item['source'],
-                lambda_set=(
-                    lambda item, val: {
-                        k: v if k != 'source' else val
-                        for k, v in item.items()
-                    }
-                ),
+                tensor_key='source',
             )
 
         if self.args.labels:

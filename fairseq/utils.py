@@ -255,8 +255,8 @@ def convert_padding_direction(
 
 def item(tensor):
     # tpu-comment: making this a no-op for xla devices.
-    if hasattr(tensor, 'device') and tensor.device.type == 'xla':
-        return tensor
+    if torch.is_tensor(tensor) and tensor.device.type == 'xla':
+        return tensor.detach()
     if hasattr(tensor, "item"):
         return tensor.item()
     if hasattr(tensor, "__getitem__"):
@@ -563,6 +563,11 @@ def new_arange(x, *size):
 def get_tpu_device(args):
     import torch_xla.core.xla_model as xm
     return xm.xla_device()
+
+
+def xla_device_to_cpu(dat):
+    import torch_xla.core.xla_model as xm
+    return xm._maybe_convert_to_cpu(dat)
 
 
 class CudaEnvironment(object):

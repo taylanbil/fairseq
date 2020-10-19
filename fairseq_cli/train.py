@@ -211,6 +211,9 @@ def train(args, trainer, task, epoch_itr):
         # FIXME: delete these in the end
         #print('SHAPE', i, samples[0]['net_input']['source'].shape)
         #continue
+        if not i % 10:
+            import torch_xla.debug.metrics as met
+            print(met.metrics_report())
 
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
@@ -227,6 +230,7 @@ def train(args, trainer, task, epoch_itr):
 
             # reset mid-epoch stats after each log interval
             # the end-of-epoch stats will still be preserved
+            # FIXME: taylan reset in closure!!!!!!!!!!!!!!!!!
             metrics.reset_meters("train_inner")
 
         end_of_epoch = not itr.has_next()
