@@ -130,20 +130,14 @@ class Wav2vecCriterion(FairseqCriterion):
                 logging_output["correct"] = corr
                 logging_output["count"] = count
 
-<<<<<<< HEAD
-=======
-        if log_pred:
-            # FIXME: taylan remove this.
-            raise
+        if log_pred and logits.device.type != 'xla':
             logging_output['logits'] = logits.cpu().numpy()
             logging_output['target'] = target.cpu().numpy()
->>>>>>> Remove dynamism, apply mask correctly, add some guardrails, some cleanups.
         return loss, sample_size, logging_output
 
     @staticmethod
     def reduce_metrics(logging_outputs) -> None:
         """Aggregate logging outputs from data parallel training."""
-<<<<<<< HEAD
         loss_sum = utils.item(sum(log.get("loss", 0) for log in logging_outputs))
         ntokens = utils.item(sum(log.get("ntokens", 0) for log in logging_outputs))
         nsentences = utils.item(
@@ -158,16 +152,6 @@ class Wav2vecCriterion(FairseqCriterion):
         )
         metrics.log_scalar("ntokens", ntokens)
         metrics.log_scalar("nsentences", nsentences)
-=======
-        loss_sum = utils.item(sum(log.get('loss', 0) for log in logging_outputs))
-        ntokens = utils.item(sum(log.get('ntokens', 0) for log in logging_outputs))
-        nsentences = utils.item(sum(log.get('nsentences', 0) for log in logging_outputs))
-        sample_size = utils.item(sum(log.get('sample_size', 0) for log in logging_outputs))
-
-        metrics.log_scalar('loss', loss_sum / sample_size / math.log(2), sample_size, round=3)
-        metrics.log_scalar('ntokens', ntokens)
-        metrics.log_scalar('nsentences', nsentences)
->>>>>>> Remove dynamism, apply mask correctly, add some guardrails, some cleanups.
 
         correct = sum(log.get("correct", 0) for log in logging_outputs)
         metrics.log_scalar("_correct", correct)
@@ -219,4 +203,4 @@ class Wav2vecCriterion(FairseqCriterion):
         across workers prior to calling `reduce_metrics`. Setting this
         to True will improves distributed training speed.
         """
-        return False
+        return True
