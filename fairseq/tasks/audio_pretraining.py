@@ -115,17 +115,8 @@ class AudioPretrainingTask(FairseqTask):
             normalize=self.args.normalize,
             compute_mask_indices=self.args.tpu,
             args=self.args,
+            num_buckets=self.args.num_batch_buckets or int(self.args.tpu),
         )
-        if self.args.num_batch_buckets > 0 or self.args.tpu:
-            # Always bucket for tpus.
-            self.datasets[split] = BucketPadLengthDataset(
-                self.datasets[split],
-                sizes=self.datasets[split].sizes,
-                num_buckets=self.args.num_batch_buckets or 1,
-                pad_idx=0,
-                left_pad=False,
-                tensor_key='source',
-            )
 
         if self.args.labels:
             dict_path = os.path.join(self.args.data, f"dict.{self.args.labels}.txt")

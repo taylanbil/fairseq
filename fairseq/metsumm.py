@@ -1,3 +1,4 @@
+# FIXME: remove this file
 def metsumm(stepno=''):
     if hasattr(metsumm, 'STEPNO'):
         metsumm.STEPNO += stepno.lower()=="before forward"

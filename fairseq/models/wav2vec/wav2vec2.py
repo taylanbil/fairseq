@@ -520,12 +520,10 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         if logits.device.type == 'xla' or neg_is_pos.any():
             #pass
-            fillval = float(2**30)
+            fillval = -float(2**30)
             if not hasattr(self, '_inftensor'):
                 self._inftensor = torch.tensor(fillval).to(x.device)
             logits[1:] = index_put(logits[1:], neg_is_pos, self._inftensor)
-            #logits[1:][neg_is_pos] = float("-inf")
-            #logits[1:] = index_put(logits[1:], neg_is_pos, fillval)
 
         return logits
 

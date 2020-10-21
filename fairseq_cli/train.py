@@ -208,12 +208,6 @@ def train(args, trainer, task, epoch_itr):
     should_stop = False
     num_updates = trainer.get_num_updates()
     for i, samples in enumerate(progress):
-        # FIXME: delete these in the end
-        #print('SHAPE', i, samples[0]['net_input']['source'].shape)
-        #continue
-        if not i % 10:
-            import torch_xla.debug.metrics as met
-            print(met.metrics_report())
 
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
@@ -232,6 +226,8 @@ def train(args, trainer, task, epoch_itr):
             # the end-of-epoch stats will still be preserved
             # FIXME: taylan reset in closure!!!!!!!!!!!!!!!!!
             metrics.reset_meters("train_inner")
+            if args.xla_metrics_debug:
+                metrics.xla_metrics_report()
 
         end_of_epoch = not itr.has_next()
         valid_losses, should_stop = validate_and_save(

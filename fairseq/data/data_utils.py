@@ -407,20 +407,25 @@ def compute_mask_indices(
         mask[i, mask_idc] = True
 
     return mask
-    # FIXME: taylan remove this
-    """
-    left_mask, right_mask = [], []
-    for i, mask_idc in enumerate(mask_idcs):
-        if len(mask_idc) > min_len:
-            mask_idc = np.random.choice(mask_idc, min_len, replace=False)
-        mask[i, mask_idc] = True
-        for idc in np.sort(mask_idc):
-            l_mask = [False] * bsz
-            l_mask[i] = True
-            r_mask = [False] * all_sz
-            r_mask[idc] = True
-            left_mask.append(l_mask)
-            right_mask.append(r_mask)
 
-    return mask, np.array(left_mask), np.array(right_mask)
-    """
+
+def get_buckets(sizes, num_buckets):
+    buckets = np.unique(
+        np.percentile(
+            sizes,
+            np.linspace(0, 100, num_buckets + 1),
+            interpolation='lower',
+        )[1:]
+    )
+    return buckets
+
+
+def get_bucketed_sizes(orig_sizes, buckets):
+    sizes = np.copy(orig_sizes)
+    assert np.min(sizes) >= 0
+    start_val = -1
+    for end_val in buckets:
+        mask = (sizes > start_val) & (sizes <= end_val)
+        sizes[mask] = end_val
+        start_val = end_val
+    return sizes

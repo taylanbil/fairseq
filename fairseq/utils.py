@@ -81,8 +81,7 @@ def move_to_cuda(sample):
 
 
 def move_to_cpu(sample):
-    # FIXME: taylan remove
-    raise
+
     def _move_to_cpu(tensor):
         # PyTorch has poor support for half tensors (float16) on CPU.
         # Move any such tensors to float32.

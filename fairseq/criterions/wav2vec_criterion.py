@@ -40,8 +40,6 @@ class Wav2vecCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-        # FIXME: taylan clean metsumm
-        from fairseq.metsumm import metsumm; metsumm("Before forward")
         net_output = model(**sample['net_input'])
 
         logits = model.get_logits(net_output).float()

@@ -133,6 +133,7 @@ def log_scalar(
             agg.add_meter(key, AverageMeter(round=round), priority)
         agg[key].update(value, weight)
 
+
 def log_derived(key: str, fn: Callable[[MetersDict], float], priority: int = 20):
     """Log a scalar value derived from other meters.
 
@@ -290,3 +291,11 @@ def load_state_dict(state_dict):
     for name, agg_state in state_dict.items():
         _aggregators[name] = MetersDict()
         _aggregators[name].load_state_dict(agg_state)
+
+
+def xla_metrics_report():
+    try:
+        import torch_xla.debug.metrics as met
+        print(met.metrics_report())
+    except ImportError:
+        return
