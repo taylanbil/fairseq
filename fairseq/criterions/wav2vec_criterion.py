@@ -49,12 +49,7 @@ class Wav2vecCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
-<<<<<<< HEAD
         net_output = model(**sample["net_input"])
-=======
-        net_output = model(**sample['net_input'])
-
->>>>>>> Fix data bucketing for RawAudioDataset, refactor bucketing functions, fix filling w/ -inf in wav2vec2, minor cleanups
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
 
@@ -80,7 +75,9 @@ class Wav2vecCriterion(FairseqCriterion):
                 reduction="sum" if reduce else "none",
             )
 
-        if 'mask_indices' in sample['net_input'] and self.infonce:
+        if 'sample_size' in sample and self.infonce:
+            sample_size = sample['sample_size']
+        elif 'mask_indices' in sample['net_input'] and self.infonce:
             # XXX: what happens if not self.infonce?
             sample_size = sample['net_input']['mask_indices'].sum()
         else:
