@@ -49,7 +49,12 @@ class Wav2vecCriterion(FairseqCriterion):
         2) the sample size, which is used as the denominator for the gradient
         3) logging outputs to display while training
         """
+<<<<<<< HEAD
         net_output = model(**sample["net_input"])
+=======
+        net_output = model(**sample['net_input'])
+
+>>>>>>> Fix data bucketing for RawAudioDataset, refactor bucketing functions, fix filling w/ -inf in wav2vec2, minor cleanups
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
 
@@ -186,15 +191,7 @@ class Wav2vecCriterion(FairseqCriterion):
                         k, val / sample_size / math.log(2), sample_size, round=3
                     )
                 else:
-<<<<<<< HEAD
                     metrics.log_scalar(k, val / len(logging_outputs), round=3)
-=======
-                    # FIXME: taylan, round=3 could be a problem
-                    # XXX: we dont hit this in this workload
-                    import pdb
-                    pdb.set_trace()
-                    metrics.log_scalar(k, val, round=3)
->>>>>>> Remove dynamism, apply mask correctly, add some guardrails, some cleanups.
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:

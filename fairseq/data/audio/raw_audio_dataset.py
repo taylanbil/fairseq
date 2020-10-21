@@ -13,7 +13,7 @@ import torch
 import torch.nn.functional as F
 
 from .. import FairseqDataset, BaseWrapperDataset
-from ..data_utils import compute_mask_indices
+from ..data_utils import compute_mask_indices, get_buckets, get_bucketed_sizes
 
 
 logger = logging.getLogger(__name__)
@@ -116,6 +116,9 @@ class RawAudioDataset(FairseqDataset):
 
         return mask_indices, mask_channel_indices
 
+    @staticmethod
+    def _bucket_tensor(tensor, num_pad, value):
+        return F.pad(tensor, (0, num_pad), value=value)
 
     def collater(self, samples):
         samples = [s for s in samples if s["source"] is not None]
@@ -151,14 +154,35 @@ class RawAudioDataset(FairseqDataset):
         if self.pad:
             input["padding_mask"] = padding_mask
 
+        if hasattr(self, 'num_buckets') and self.num_buckets > 0:
+            assert self.pad, "Cannot bucket without padding first."
+            bucket = max(self._bucketed_sizes[s['id']] for s in samples)
+            num_pad = bucket - collated_sources.size(-1)
+            if num_pad:
+                input['source'] = self._bucket_tensor(
+                    collated_sources, num_pad, 0
+                )
+                input['padding_mask'] = self._bucket_tensor(
+                    padding_mask, num_pad, True
+                )
+
         if self.compute_mask_indices:
-            B = collated_sources.size(0)
-            T = self._get_mask_indices_dims(collated_sources.size(-1))
+            B = input['source'].size(0)
+            T = self._get_mask_indices_dims(input['source'].size(-1))
+            padding_mask_reshaped = input['padding_mask'].clone()
+            extra = padding_mask_reshaped.size(1) % T
+            if extra > 0:
+                padding_mask_reshaped = padding_mask_reshaped[:, :-extra]
+            padding_mask_reshaped = padding_mask_reshaped.view(
+                padding_mask_reshaped.size(0), T, -1
+            )
+            padding_mask_reshaped = padding_mask_reshaped.all(-1)
             mask_indices, mask_channel_indices = self._compute_mask_indices(
-                (B, T, self._C), padding_mask
+                (B, T, self._C), padding_mask_reshaped,
             )
             input["mask_indices"] = mask_indices
             input["mask_channel_indices"] = mask_channel_indices
+
         return {
             "id": torch.LongTensor([s["id"] for s in samples]),
             "net_input": input,
@@ -210,6 +234,7 @@ class FileAudioDataset(RawAudioDataset):
         normalize=False,
         compute_mask_indices=False,
         args=None,
+        num_buckets=0,
     ):
         super().__init__(
             sample_rate=sample_rate,
@@ -237,7 +262,21 @@ class FileAudioDataset(RawAudioDataset):
                     continue
                 self.fnames.append(items[0])
                 self.sizes.append(sz)
+        self.set_bucket_info(num_buckets)
         logger.info(f"loaded {len(self.fnames)}, skipped {skipped} samples")
+
+    def set_bucket_info(self, num_buckets):
+        self.num_buckets = num_buckets
+        if self.num_buckets > 0:
+            self._collated_sizes = np.minimum(
+                np.array(self.sizes), self.max_sample_size,
+            )
+            self.buckets = get_buckets(
+                self._collated_sizes, self.num_buckets,
+            )
+            self._bucketed_sizes = get_bucketed_sizes(
+                self._collated_sizes, self.buckets
+            )
 
     def __getitem__(self, index):
         import soundfile as sf
@@ -247,5 +286,3 @@ class FileAudioDataset(RawAudioDataset):
         feats = torch.from_numpy(wav).float()
         feats = self.postprocess(feats, curr_sample_rate)
         return {"id": index, "source": feats}
-
-
