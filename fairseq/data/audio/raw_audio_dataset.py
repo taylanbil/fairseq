@@ -154,6 +154,7 @@ class RawAudioDataset(FairseqDataset):
                 collated_sources[i] = self.crop_to_max_size(source, target_size)
 
         input = {"source": collated_sources}
+        out = {"id": torch.LongTensor([s["id"] for s in samples])}
         if self.pad:
             input["padding_mask"] = padding_mask
 
@@ -185,11 +186,10 @@ class RawAudioDataset(FairseqDataset):
             )
             input["mask_indices"] = mask_indices
             input["mask_channel_indices"] = mask_channel_indices
+            out['sample_size'] = mask_indices.sum().item()
 
-        return {
-            "id": torch.LongTensor([s["id"] for s in samples]),
-            "net_input": input,
-        }
+        out["net_input"] = input
+        return out
 
     def _get_mask_indices_dims(self, size, padding=0, dilation=1):
         if size not in self._features_size_map:

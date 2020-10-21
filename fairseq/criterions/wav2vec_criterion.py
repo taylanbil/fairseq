@@ -58,7 +58,9 @@ class Wav2vecCriterion(FairseqCriterion):
         else:
             loss = F.binary_cross_entropy_with_logits(logits, target.float(), weights, reduction="sum" if reduce else "none",)
 
-        if 'mask_indices' in sample['net_input'] and self.infonce:
+        if 'sample_size' in sample and self.infonce:
+            sample_size = sample['sample_size']
+        elif 'mask_indices' in sample['net_input'] and self.infonce:
             # XXX: what happens if not self.infonce?
             sample_size = sample['net_input']['mask_indices'].sum()
         else:
@@ -80,7 +82,7 @@ class Wav2vecCriterion(FairseqCriterion):
                     losses.append(p)
 
         logging_output = {
-            #'loss': losr.item() if reduce else loss,
+            #'loss': loss.item() if reduce else loss,
             'loss': loss.detach(),
             'ntokens': sample_size,
             'nsentences': sample['id'].numel(),
@@ -152,10 +154,6 @@ class Wav2vecCriterion(FairseqCriterion):
                 if k.startswith('loss'):
                     metrics.log_scalar(k, val / sample_size / math.log(2), sample_size)
                 else:
-                    # FIXME: taylan, round=3 could be a problem
-                    # XXX: we dont hit this in this workload
-                    import pdb
-                    pdb.set_trace()
                     metrics.log_scalar(k, val, round=3)
 
     @staticmethod

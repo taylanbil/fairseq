@@ -126,8 +126,6 @@ def log_scalar(
         priority (int): smaller values are logged earlier in the output
         round (Optional[int]): number of digits to round to when displaying
     """
-    if torch.is_tensor(value) and value.device.type == 'xla':
-        value = value.item()
     for agg in get_active_aggregators():
         if key not in agg:
             agg.add_meter(key, AverageMeter(round=round), priority)
