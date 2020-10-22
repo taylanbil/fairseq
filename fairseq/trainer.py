@@ -463,8 +463,7 @@ class Trainer(object):
                 # before marking step can lead to OOM errors.
                 # To handle gradient accumulation use case, we explicitly
                 # mark step here for every forward pass without a backward pass
-                import torch_xla.core.xla_model as xm
-                xm.mark_step()
+                self._xla_markstep_and_send_to_cpu()
 
         if is_dummy_batch:
             if torch.is_tensor(sample_size):
@@ -555,15 +554,14 @@ class Trainer(object):
                 # this causes wps to be misreported when log_interval > 1
                 logging_output = {}
                 if self.get_num_updates() % self.args.log_interval == 0:
-                    import torch_xla.core.xla_model as xm
-                    from fairseq.utils import xla_device_to_cpu
-                    xm.mark_step()
-                    logging_outputs = xla_device_to_cpu(logging_outputs)
+                    logging_outputs = self._xla_markstep_and_send_to_cpu(
+                        logging_outputs
+                    )
                     logging_output = self._reduce_and_log_stats(
                         logging_outputs, sample_size, grad_norm,
                     )
-                    xm.mark_step()
-                    # XXX: when I put step closure, logging outputs is shrunk..
+                    self._xla_markstep_and_send_to_cpu()
+                    # FIXME: taylan when I put step closure, logging outputs is shrunk..
                     #xm.add_step_closure(
                     #    self._reduce_and_log_stats,
                     #    args=(logging_outputs, sample_size, grad_norm)
@@ -603,8 +601,7 @@ class Trainer(object):
         if self._dummy_batch == "DUMMY":
             self._dummy_batch = sample
         if self.tpu:
-            import torch_xla.core.xla_model as xm
-            xm.mark_step()
+            self._xla_markstep_and_send_to_cpu()
 
         with torch.no_grad():
             self.model.eval()
@@ -650,6 +647,8 @@ class Trainer(object):
             )
 
         # log validation stats
+        if self.tpu:
+            logging_outputs = self._xla_markstep_and_send_to_cpu(logging_outputs)
         logging_output = self._reduce_and_log_stats(logging_outputs, sample_size)
 
         return logging_output
@@ -981,6 +980,13 @@ class Trainer(object):
                 )
             logging.info("NOTE: XLA compilation detected; {}".format(message))
         self._num_xla_compiles = num_xla_compiles
+
+    def _xla_markstep_and_send_to_cpu(self, data=None):
+        import torch_xla.core.xla_model as xm
+        xm.mark_step()
+        if data is not None:
+            from fairseq.utils import xla_device_to_cpu
+            return xla_device_to_cpu(data)
 
 
 def _catalog_shared_params(module, memo=None, prefix=''):
