@@ -277,6 +277,10 @@ class FileAudioDataset(RawAudioDataset):
             self._bucketed_sizes = get_bucketed_sizes(
                 self._collated_sizes, self.buckets
             )
+            logger.info(
+                f"{len(self.buckets)} bucket(s) for the audio dataset: "
+                f"{self.buckets}"
+            )
 
     def __getitem__(self, index):
         import soundfile as sf
