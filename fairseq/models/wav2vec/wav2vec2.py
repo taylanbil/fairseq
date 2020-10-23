@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from typing import List, Tuple
 
 from fairseq import utils
-from fairseq.data.data_utils import compute_mask_indices, index_put
+from fairseq.data.data_utils import compute_mask_indices
 from fairseq.models import BaseFairseqModel, register_model, register_model_architecture
 from fairseq.modules import (
     Fp32GroupNorm,
@@ -27,7 +27,7 @@ from fairseq.modules import (
     TransposeLast,
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
-from fairseq.utils import buffered_arange
+from fairseq.utils import buffered_arange, index_put
 
 
 @register_model("wav2vec2")

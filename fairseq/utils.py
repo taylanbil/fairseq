@@ -564,6 +564,18 @@ def get_tpu_device(args):
     return xm.xla_device()
 
 
+def index_put(tensor, indices, value):
+    if tensor.device.type != 'xla':
+        for _ in range(indices.dim(), tensor.dim()):
+            indices = indices.unsqueeze(-1)
+        if indices.size(-1) < tensor.size(-1):
+            indices = indices.expand_as(tensor)
+        tensor = torch.mul(tensor, ~indices) + torch.mul(value, indices)
+    else:
+        tensor[indices] = value
+    return tensor
+
+
 def xla_device_to_cpu(dat):
     import torch_xla.core.xla_model as xm
     return xm._maybe_convert_to_cpu(dat)
