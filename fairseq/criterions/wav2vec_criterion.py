@@ -32,6 +32,7 @@ class Wav2VecCriterionConfig(FairseqDataclass):
         metadata={"help": "output keys to log"},
     )
 
+from fairseq.utils import index_put
 
 @register_criterion("wav2vec", dataclass=Wav2VecCriterionConfig)
 class Wav2vecCriterion(FairseqCriterion):
@@ -53,6 +54,14 @@ class Wav2vecCriterion(FairseqCriterion):
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
 
+        if logits.device.type == 'xla':
+            # tpu-comment: since dynamic shapes lead to recompilations on xla,
+            # we don't shrink tensors using mask_indices.
+            # Instead, we do the following when computing loss:
+            mi = sample['net_input']['mask_indices'].reshape(logits.size(0))
+            target = index_put(target, ~mi, -1)
+
+        # XXX: handle weights on xla.
         weights = None
         if hasattr(model, "get_target_weights") and not self.infonce:
             weights = model.get_target_weights(target, net_output)
@@ -63,16 +72,14 @@ class Wav2vecCriterion(FairseqCriterion):
 
         if self.infonce:
             loss = F.cross_entropy(
-                logits,
-                target,
-                reduction="sum" if reduce else "none",
+                logits, target, reduction="sum" if reduce else "none",
+                ignore_index=-1,
             )
         else:
             loss = F.binary_cross_entropy_with_logits(
-                logits,
-                target.float(),
-                weights,
+                logits, target.float(), weights,
                 reduction="sum" if reduce else "none",
+                ignore_index=-1,
             )
 
         if 'sample_size' in sample and self.infonce:

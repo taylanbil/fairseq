@@ -351,18 +351,6 @@ def post_process(sentence: str, symbol: str):
     return sentence
 
 
-def index_put(tensor, indices, value):
-    if tensor.device.type == 'xla':
-        for _ in range(indices.dim(), tensor.dim()):
-            indices = indices.unsqueeze(-1)
-        if indices.size(-1) < tensor.size(-1):
-            indices = indices.expand_as(tensor)
-        tensor = torch.mul(tensor, ~indices) + torch.mul(value, indices)
-    else:
-        tensor[indices] = value
-    return tensor
-
-
 def compute_mask_indices(
     shape: Tuple[int, int],
     padding_mask: Optional[torch.Tensor],

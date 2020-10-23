@@ -26,7 +26,7 @@ from fairseq.modules import (
     TransposeLast,
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
-from fairseq.utils import buffered_arange
+from fairseq.utils import buffered_arange, index_put
 
 
 EXTRACTOR_MODE_CHOICES = ChoiceEnum(["default", "layer_norm"])
