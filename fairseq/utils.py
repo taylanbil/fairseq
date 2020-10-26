@@ -662,7 +662,7 @@ def tpu_data_loader(itr):
         total=len(itr),
     )
 def index_put(tensor, indices, value):
-    if tensor.device.type != 'xla':
+    if tensor.device.type == 'xla':
         for _ in range(indices.dim(), tensor.dim()):
             indices = indices.unsqueeze(-1)
         if indices.size(-1) < tensor.size(-1):

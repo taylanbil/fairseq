@@ -134,7 +134,7 @@ class Wav2vecCriterion(FairseqCriterion):
                     both = max & min
                     # corr = max.long().sum().item() - both.long().sum().item()
                     corr = max.long().sum() - both.long().sum()
-                    count = max.numel()
+                    count = float(max.numel())
 
                 logging_output["correct"] = corr
                 logging_output["count"] = count
