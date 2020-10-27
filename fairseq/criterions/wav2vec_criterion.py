@@ -116,7 +116,10 @@ class Wav2vecCriterion(FairseqCriterion):
 
         for lk in self.log_keys:
             if lk in net_output:
-                logging_output[lk] = float((net_output[lk]))
+                value = net_output[lk]
+                if not torch.is_tensor(value) or value.device.type != 'xla':
+                    value = float(value)
+                logging_output[lk] = value
 
         if len(losses) > 1:
             for i, l in enumerate(losses):

@@ -584,7 +584,6 @@ class Trainer(object):
 
         # gather logging outputs from all replicas
         if self._sync_stats():
-            # FIXME: taylan this is not hit in 1 core. revisit when running 8 cores
             train_time = self._local_cumulative_training_time()
             logging_outputs, (
                 sample_size,
