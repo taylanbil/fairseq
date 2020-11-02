@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from fairseq import metrics, utils
 from fairseq.criterions import FairseqCriterion, register_criterion
-from fairseq.utils import index_put
+from fairseq.utils import index_put, is_xla_tensor
 
 
 @register_criterion('wav2vec')
@@ -46,7 +46,7 @@ class Wav2vecCriterion(FairseqCriterion):
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
 
-        if logits.device.type == 'xla':
+        if is_xla_tensor(logits):
             # tpu-comment: since dynamic shapes lead to recompilations on xla,
             # we don't shrink tensors using mask_indices.
             # Instead, we do the following when computing loss:
@@ -77,9 +77,9 @@ class Wav2vecCriterion(FairseqCriterion):
         if 'sample_size' in sample and self.infonce:
             sample_size = sample['sample_size']
         elif 'mask_indices' in sample['net_input'] and self.infonce:
-            # XXX: what happens if not self.infonce?
             sample_size = sample['net_input']['mask_indices'].sum()
         else:
+            # XXX: if not self.infonce, is xla path working correctly?
             sample_size = target.numel() if self.infonce else target.long().sum()
         losses.append(loss)
 
@@ -98,7 +98,6 @@ class Wav2vecCriterion(FairseqCriterion):
                     losses.append(p)
 
         logging_output = {
-            #'loss': loss.item() if reduce else loss,
             'loss': loss.detach(),
             'ntokens': sample_size,
             'nsentences': sample['id'].numel(),
@@ -108,7 +107,7 @@ class Wav2vecCriterion(FairseqCriterion):
         for lk in self.log_keys:
             if lk in net_output:
                 value = net_output[lk]
-                if not torch.is_tensor(value) or value.device.type != 'xla':
+                if not is_xla_tensor(value):
                     value = float(value)
                 logging_output[lk] = value
 
@@ -125,15 +124,20 @@ class Wav2vecCriterion(FairseqCriterion):
                     assert logits.dim() > 1, logits.shape
                     max = logits.argmax(-1) == 0
                     min = logits.argmin(-1) == 0
-                    both = max & min
-                    # corr = max.long().sum().item() - both.long().sum().item()
-                    corr = max.long().sum() - both.long().sum()
-                    count = float(max.numel())
+                    if is_xla_tensor(logits):
+                        max, min = max * mi, min * mi
+                        both = max & min
+                        corr = max.long().sum() - both.long().sum()
+                        count = mi.sum()
+                    else:
+                        both = max & min
+                        corr = max.long().sum().item() - both.long().sum().item()
+                        count = float(max.numel())
 
                 logging_output["correct"] = corr
                 logging_output["count"] = count
 
-        if log_pred and logits.device.type != 'xla':
+        if log_pred and not is_xla_tensor(logits):
             logging_output['logits'] = logits.cpu().numpy()
             logging_output['target'] = target.cpu().numpy()
         return loss, sample_size, logging_output

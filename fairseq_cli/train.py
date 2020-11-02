@@ -209,6 +209,11 @@ def train(args, trainer, task, epoch_itr):
     num_updates = trainer.get_num_updates()
     for i, samples in enumerate(progress):
 
+        from fairseq.metsumm import metsumm as m
+        if not i % 50:
+            import torch_xla.core.xla_model as xm
+            if xm.is_master_ordinal():
+                m(str(i))
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
         ):

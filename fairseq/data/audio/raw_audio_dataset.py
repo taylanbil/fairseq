@@ -185,11 +185,90 @@ class RawAudioDataset(FairseqDataset):
                 (B, T, self._C), padding_mask_reshaped,
             )
             input["mask_indices"] = mask_indices
+            import pdb
+            pdb.set_trace()
+            # FIXME: implement
+            #input["neg_idxs"] = self._get_neg_idxs(mask_indices)
+            input["tszs_after_mask"] = mask_indices.sum(-1).tolist()
             input["mask_channel_indices"] = mask_channel_indices
             out['sample_size'] = mask_indices.sum().item()
 
         out["net_input"] = input
         return out
+
+    def _get_neg_idxs(self, mask_indices):
+        return
+
+    def _sample_negatives(self, mask_indices):
+        """
+        Sampling negatives during model's forward is problematic on XLA.
+        That's why we do it here during data prep when run on XLA.
+        """
+        self.n_negatives = self.args.num_negatives
+        self.cross_sample_negatives = self.args.cross_sample_negatives
+        if self.n_negatives == 0 and self.cross_sample_negatives == 0:
+            # FIXME: handle this
+            return y.new(0)
+
+        (bsz, tsz), fsz = mask_indices.shape, self.args.final_dim
+        high = mask_indices.sum(-1).max().item()
+        cross_high = high * bsz
+
+        with torch.no_grad():
+            assert high > 1, f"{bsz,tsz,fsz}"
+
+            if self.n_negatives > 0:
+                tszs = (
+                    torch.arange(tsz)
+                    .unsqueeze(-1)
+                    .expand(-1, self.n_negatives)
+                    .flatten()
+                )
+
+                ts = torch.arange(tsz)
+
+                neg_idxs = torch.randint(
+                    low=0, high=high-1, size=(bsz, tsz, self.n_negatives)
+                )
+                neg_idxs = torch.stack([
+                    ts[mask_indices[j]][ni] for j, ni in enumerate(neg_idxs)
+                ]).reshape(bsz, -1)
+                neg_idxs[neg_idxs >= tszs] += 1
+                import pdb
+                pdb.set_trace()
+
+            if self.cross_sample_negatives > 0:
+                raise NotImplementedError('Implement for XLA.')
+                tszs = (
+                    torch.arange(num)
+                    .unsqueeze(-1)
+                    .expand(-1, self.cross_sample_negatives)
+                    .flatten()
+                )
+
+                cross_neg_idxs = torch.randint(
+                    low=0,
+                    high=cross_high - 1,
+                    size=(bsz, self.cross_sample_negatives * num),
+                )
+                cross_neg_idxs[cross_neg_idxs >= tszs] += 1
+
+        if self.n_negatives > 0:
+            for i in range(1, bsz):
+                neg_idxs[i] += i * high
+        else:
+            neg_idxs = cross_neg_idxs
+
+        if self.cross_sample_negatives > 0 and self.n_negatives > 0:
+            neg_idxs = torch.cat([neg_idxs, cross_neg_idxs], dim=1)
+
+        negs = y[neg_idxs.view(-1)]
+        negs = negs.view(
+            bsz, tsz, self.n_negatives + self.cross_sample_negatives, fsz
+        ).permute(
+            2, 0, 1, 3
+        )  # to NxBxTxC
+        return negs, neg_idxs
 
     def _get_mask_indices_dims(self, size, padding=0, dilation=1):
         if size not in self._features_size_map:

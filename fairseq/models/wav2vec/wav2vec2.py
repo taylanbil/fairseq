@@ -27,7 +27,7 @@ from fairseq.modules import (
     TransposeLast,
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
-from fairseq.utils import buffered_arange, index_put
+from fairseq.utils import buffered_arange, index_put, is_xla_tensor
 
 
 @register_model("wav2vec2")
@@ -450,7 +450,21 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         return x, mask_indices
 
-    def sample_negatives(self, y, num):
+    def _get_neg_idxs(self, high, size, padding_counts=None, num=None):
+        if padding_counts is None:
+            neg_idxs = torch.randint(low=0, high=high-1, size=size)
+        else:
+            bsz, l = size
+            #num = l // self.n_negatives if num is None else num
+            assert len(padding_counts) == bsz
+            neg_idxs = [
+                torch.randint(low=0, high=high-1, size=(1, l))
+                for pc in padding_counts
+            ]
+            neg_idxs = torch.stack(neg_idxs)
+        return neg_idxs
+
+    def sample_negatives(self, y, num, padding_counts=None):
 
         if self.n_negatives == 0 and self.cross_sample_negatives == 0:
             return y.new(0)
@@ -459,21 +473,23 @@ class Wav2Vec2Model(BaseFairseqModel):
         y = y.view(-1, fsz)  # BTC => (BxT)C
 
         cross_high = tsz * bsz
-        high = tsz
+        high = num
+        # FIXME: there's a problem here w/ tsz and num
+        # this assumes y is shrunk at this point.
         with torch.no_grad():
             assert high > 1, f"{bsz,tsz,fsz}"
 
             if self.n_negatives > 0:
                 tszs = (
-                    buffered_arange(num)
+                    buffered_arange(tsz)
                     .unsqueeze(-1)
                     .expand(-1, self.n_negatives)
                     .flatten()
                 )
 
-                neg_idxs = torch.randint(
-                    low=0, high=high - 1, size=(bsz, self.n_negatives * num)
-                )
+                neg_idxs = torch.randint(low=0, high=high-1, size=(bsz, self.n_negatives * tsz))
+                import pdb
+                pdb.set_trace()
                 neg_idxs[neg_idxs >= tszs] += 1
 
             if self.cross_sample_negatives > 0:
@@ -500,9 +516,13 @@ class Wav2Vec2Model(BaseFairseqModel):
         if self.cross_sample_negatives > 0 and self.n_negatives > 0:
             neg_idxs = torch.cat([neg_idxs, cross_neg_idxs], dim=1)
 
+        import pdb
+        pdb.set_trace()
         negs = y[neg_idxs.view(-1)]
+        import pdb
+        pdb.set_trace()
         negs = negs.view(
-            bsz, num, self.n_negatives + self.cross_sample_negatives, fsz
+            bsz, tsz, self.n_negatives + self.cross_sample_negatives, fsz
         ).permute(
             2, 0, 1, 3
         )  # to NxBxTxC
@@ -518,8 +538,7 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         logits = logits / self.logit_temp
 
-        if logits.device.type == 'xla' or neg_is_pos.any():
-            #pass
+        if is_xla_tensor(logits) or neg_is_pos.any():
             fillval = -float(2**30)
             if not hasattr(self, '_inftensor'):
                 self._inftensor = torch.tensor(fillval).to(x.device)
@@ -529,7 +548,8 @@ class Wav2Vec2Model(BaseFairseqModel):
 
     def forward(
         self, source, padding_mask=None, mask=True, features_only=False,
-        mask_indices=None, mask_channel_indices=None,
+        mask_indices=None, mask_channel_indices=None, padding_counts=None,
+        tszs_after_mask=None,
     ):
 
         if self.feature_grad_mult > 0:
@@ -579,7 +599,7 @@ class Wav2Vec2Model(BaseFairseqModel):
                 mask_indices=mask_indices,
                 mask_channel_indices=mask_channel_indices,
             )
-            if x.device.type != 'xla' and mask_indices is not None:
+            if not is_xla_tensor(x) and mask_indices is not None:
                 # tpu-comment: reducing the size in a dynamic way causes
                 # too many recompilations on xla.
                 y = unmasked_features[mask_indices].view(
@@ -607,13 +627,21 @@ class Wav2Vec2Model(BaseFairseqModel):
 
             y = self.project_q(y)
 
+            num = y.size(1) if tszs_after_mask is None else max(tszs_after_mask)
             if self.negatives_from_everywhere:
-                neg_cands, *_ = self.quantizer(unmasked_features, produce_targets=False)
-                negs, _ = self.sample_negatives(neg_cands, y.size(1))
+                neg_cands, *_ = self.quantizer(
+                    unmasked_features, produce_targets=False,
+                )
+                negs, _ = self.sample_negatives(
+                    neg_cands, num, padding_counts=padding_counts,
+                )
                 negs = self.project_q(negs)
 
             else:
-                negs, _ = self.sample_negatives(y, y.size(1))
+                negs, _ = self.sample_negatives(
+                    y, num,
+                    padding_counts=padding_counts,
+                )
 
             if self.codebook_negatives > 0:
                 cb_negs = self.quantizer.sample_from_codebook(
@@ -628,12 +656,17 @@ class Wav2Vec2Model(BaseFairseqModel):
             y = self.project_q(y)
 
             if self.negatives_from_everywhere:
-                negs, _ = self.sample_negatives(unmasked_features, y.size(1))
+                negs, _ = self.sample_negatives(
+                    unmasked_features, num, padding_counts=padding_counts,
+                )
                 negs = self.project_q(negs)
             else:
-                negs, _ = self.sample_negatives(y, y.size(1))
+                negs, _ = self.sample_negatives(
+                    y, num,
+                    padding_counts=padding_counts,
+                )
 
-        if x.device.type != 'xla':
+        if not is_xla_tensor(x):
             # tpu-comment: reducing the size in a dynamic way causes
             # too many recompilations on xla.
             x = x[mask_indices].view(x.size(0), -1, x.size(-1))
