@@ -52,13 +52,7 @@ class Wav2vecCriterion(FairseqCriterion):
         net_output = model(**sample["net_input"])
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
-
-        if is_xla_tensor(logits):
-            # tpu-comment: since dynamic shapes lead to recompilations on xla,
-            # we don't shrink tensors using mask_indices.
-            # Instead, we do the following when computing loss:
-            mi = sample['net_input']['mask_indices'].reshape(logits.size(0))
-            target = index_put(target, ~mi, -1)
+        xla = is_xla_tensor(logits)
 
         # XXX: handle weights on xla.
         weights = None
@@ -69,17 +63,20 @@ class Wav2vecCriterion(FairseqCriterion):
 
         losses = []
 
+        reduction = "none" if ((not reduce) or xla) else "sum"
         if self.infonce:
-            loss = F.cross_entropy(
-                logits, target, reduction="sum" if reduce else "none",
-                ignore_index=-1,
-            )
+            loss = F.cross_entropy(logits, target, reduction=reduction)
         else:
             loss = F.binary_cross_entropy_with_logits(
-                logits, target.float(), weights,
-                reduction="sum" if reduce else "none",
-                ignore_index=-1,
+                logits, target.float(), weights, reduction=reduction
             )
+
+        if xla:
+            # tpu-comment: since dynamic shapes lead to recompilations on xla,
+            # we don't shrink tensors using mask_indices.
+            # Instead, we use mask indices to adjust loss.
+            mi = sample['net_input']['mask_indices'].reshape(logits.size(0))
+            loss = (loss * mi).sum() if reduce else (loss * mi)
 
         if 'sample_size' in sample and self.infonce:
             sample_size = sample['sample_size']

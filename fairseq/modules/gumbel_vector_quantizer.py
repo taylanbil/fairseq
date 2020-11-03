@@ -164,7 +164,6 @@ class GumbelVectorQuantizer(nn.Module):
         avg_probs = torch.softmax(
             x.view(bsz * tsz, self.groups, -1).float(), dim=-1
         ).mean(dim=0)
-        avg_probs = avg_probs.detach()
         result["prob_perplexity"] = torch.exp(
             -torch.sum(avg_probs * torch.log(avg_probs + 1e-7), dim=-1)
         ).sum()
