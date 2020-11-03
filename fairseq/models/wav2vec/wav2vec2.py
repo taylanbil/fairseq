@@ -26,7 +26,7 @@ from fairseq.modules import (
     TransposeLast,
 )
 from fairseq.modules.transformer_sentence_encoder import init_bert_params
-from fairseq.utils import buffered_arange, index_put
+from fairseq.utils import buffered_arange, index_put, is_xla_tensor
 
 
 EXTRACTOR_MODE_CHOICES = ChoiceEnum(["default", "layer_norm"])
@@ -443,8 +443,7 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         logits = logits / self.logit_temp
 
-        if logits.device.type == 'xla' or neg_is_pos.any():
-            #pass
+        if is_xla_tensor(logits) or neg_is_pos.any():
             fillval = -float(2**30)
             if not hasattr(self, '_inftensor'):
                 self._inftensor = torch.tensor(fillval).to(x.device)
@@ -504,7 +503,7 @@ class Wav2Vec2Model(BaseFairseqModel):
                 mask_indices=mask_indices,
                 mask_channel_indices=mask_channel_indices,
             )
-            if x.device.type != 'xla' and mask_indices is not None:
+            if not is_xla_tensor(x) and mask_indices is not None:
                 # tpu-comment: reducing the size in a dynamic way causes
                 # too many recompilations on xla.
                 y = unmasked_features[mask_indices].view(
@@ -558,7 +557,7 @@ class Wav2Vec2Model(BaseFairseqModel):
             else:
                 negs, _ = self.sample_negatives(y, y.size(1))
 
-        if x.device.type != 'xla':
+        if not is_xla_tensor(x):
             # tpu-comment: reducing the size in a dynamic way causes
             # too many recompilations on xla.
             x = x[mask_indices].view(x.size(0), -1, x.size(-1))

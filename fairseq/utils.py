@@ -661,8 +661,12 @@ def tpu_data_loader(itr):
         start=getattr(itr, "n", 0),
         total=len(itr),
     )
+def is_xla_tensor(tensor):
+    return torch.is_tensor(tensor) and tensor.device.type == 'xla'
+
+
 def index_put(tensor, indices, value):
-    if tensor.device.type == 'xla':
+    if is_xla_tensor(tensor):
         for _ in range(indices.dim(), tensor.dim()):
             indices = indices.unsqueeze(-1)
         if indices.size(-1) < tensor.size(-1):
