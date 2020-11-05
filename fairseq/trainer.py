@@ -710,15 +710,12 @@ class Trainer(object):
                         round=1,
                         weight=0,
                     )
-                    logging_outputs = self._xla_markstep_and_send_to_cpu(
-                        logging_outputs
-                    )
+                    self._xla_markstep_and_send_to_cpu()
                     logging_output = self._reduce_and_log_stats(
                         logging_outputs,
                         sample_size,
                         grad_norm,
                     )
-                    self._xla_markstep_and_send_to_cpu()
                     # FIXME: taylan when I put step closure, logging outputs is shrunk..
                     #xm.add_step_closure(
                     #    self._reduce_and_log_stats,
