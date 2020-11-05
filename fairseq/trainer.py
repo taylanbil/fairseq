@@ -553,9 +553,7 @@ class Trainer(object):
                 # this causes wps to be misreported when log_interval > 1
                 logging_output = {}
                 if self.get_num_updates() % self.args.log_interval == 0:
-                    logging_outputs = self._xla_markstep_and_send_to_cpu(
-                        logging_outputs
-                    )
+                    self._xla_markstep_and_send_to_cpu()
                     logging_output = self._reduce_and_log_stats(
                         logging_outputs, sample_size, grad_norm,
                     )
