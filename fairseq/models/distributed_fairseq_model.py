@@ -133,6 +133,7 @@ class TPUDistributedDataParallel(nn.Module):
             if p.grad is None:
                 p.grad = torch.zeros_like(p)
             if p.grad.requires_grad:
+                # XXX: why?
                 raise RuntimeError(
                     "TPUDistributedDataParallel only works with gradients that don't "
                     "require grad"

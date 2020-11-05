@@ -236,6 +236,8 @@ class ShardedAdam(torch.optim.Optimizer):
                     self._first_run = False
 
                 # call all_to_all on grad.view(-1)
+                import pdb
+                pdb.set_trace()
                 grad = distributed_utils.all_to_all(
                     tensor=grad.view(-1),
                     group=self.process_group,

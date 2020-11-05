@@ -346,8 +346,12 @@ class _MemoryEfficientFP16OptimizerMixin(object):
         loss.backward()
 
     def _unscale_grads(self):
+        print('step', self._multiply_factor)
         if self._multiply_factor != 1.:
+            from fairseq.metsumm import metsumm as m
+            m('A STEP')
             self.wrapped_optimizer.multiply_grads(self._multiply_factor)
+            m('B STEP')
             self._multiply_factor = 1.
 
     def multiply_grads(self, c):

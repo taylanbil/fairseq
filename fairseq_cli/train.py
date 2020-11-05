@@ -100,7 +100,7 @@ def main(args):
         "training on {} devices (GPUs/TPUs)".format(args.distributed_world_size)
     )
     logger.info(
-        "max tokens per GPU = {} and max sentences per GPU = {}".format(
+        "max tokens per device = {} and max sentences per device = {}".format(
             args.max_tokens, args.max_sentences
         )
     )
@@ -202,6 +202,16 @@ def train(args, trainer, task, epoch_itr):
     should_stop = False
     num_updates = trainer.get_num_updates()
     for i, samples in enumerate(progress):
+        from fairseq.metsumm import metsumm as m
+        m('STEP {}'.format(i))
+        import torch_xla.debug.metrics as met
+        import torch_xla.core.xla_model as xm
+        if i and not i % 10 and xm.is_master_ordinal():
+            print('XLA MET REP @ STEP', i)
+            print('-'*80)
+            print(met.metrics_report())
+            print('-'*80)
+        #print('SHAPE @ STEP', i, samples[0]['net_input']['src_tokens'].shape, flush=True)
         with metrics.aggregate("train_inner"), torch.autograd.profiler.record_function(
             "train_step-%d" % i
         ):
@@ -218,6 +228,7 @@ def train(args, trainer, task, epoch_itr):
                 # the end-of-epoch stats will still be preserved
                 metrics.reset_meters("train_inner")
 
+        print('STATS DONE @ STEP', i, flush=True)
         end_of_epoch = not itr.has_next()
         valid_losses, should_stop = validate_and_save(
             args, trainer, task, epoch_itr, valid_subsets, end_of_epoch

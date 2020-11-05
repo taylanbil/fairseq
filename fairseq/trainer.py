@@ -417,17 +417,14 @@ class Trainer(object):
         self._dummy_batch = 'DUMMY'
 
         if self.tpu:
-            import torch_xla.core.xla_model as xm
+            self._xla_markstep_and_send_to_cpu()
 
-            xm.rendezvous('begin_epoch')  # wait for all workers
-            xm.mark_step()
 
     def begin_valid_epoch(self, epoch):
         """Called at the beginning of each validation epoch."""
 
         # task specific setup per validation epoch
         self.task.begin_valid_epoch(epoch, self.get_model())
-        
         # reset dummy batch
         self._dummy_batch = 'DUMMY'
 
@@ -517,8 +514,7 @@ class Trainer(object):
                 # before marking step can lead to OOM errors.
                 # To handle gradient accumulation use case, we explicitly
                 # mark step here for every forward pass without a backward pass
-                import torch_xla.core.xla_model as xm
-                xm.mark_step()
+                self._xla_markstep_and_send_to_cpu()
 
         if is_dummy_batch:
             if torch.is_tensor(sample_size):
@@ -551,8 +547,11 @@ class Trainer(object):
                 # DDP already normalizes by the number of data parallel workers.
                 # Thus we get (sum_of_gradients / sample_size) at the end.
                 if not self.args.use_bmuf:
-                    self.optimizer.multiply_grads(self.data_parallel_world_size / sample_size)
+                    self.optimizer.multiply_grads(self.data_parallel_world_size / 1.0 )
+                    # FIXME:
+                    #self.optimizer.multiply_grads(self.data_parallel_world_size / sample_size)
                 elif sample_size > 0:  # BMUF needs to check sample size
+                    raise
                     num = self.data_parallel_world_size if self._sync_stats() else 1
                     self.optimizer.multiply_grads(num / sample_size)
 
@@ -570,7 +569,11 @@ class Trainer(object):
 
             with torch.autograd.profiler.record_function("optimizer"):
                 # take an optimization step
+                from fairseq.metsumm import metsumm as m
+                m('B4 OPTIMSTEP {}'.format(i))
                 self.optimizer.step()
+                from fairseq.metsumm import metsumm as m
+                m('AFTER OPTIMSTEP {}'.format(i))
 
         except FloatingPointError:
             # re-run the forward and backward pass with hooks attached to print
@@ -603,14 +606,11 @@ class Trainer(object):
             self.set_num_updates(self.get_num_updates() + 1)
 
             if self.tpu:
-                # mark step on TPUs
-                import torch_xla.core.xla_model as xm
-                xm.mark_step()
-
                 # only log stats every log_interval steps
                 # this causes wps to be misreported when log_interval > 1
                 logging_output = {}
                 if self.get_num_updates() % self.args.log_interval == 0:
+                    import torch_xla.core.xla_model as xm
                     # log memory usage
                     mem_info = xm.get_memory_info(self.device)
                     gb_free = mem_info['kb_free'] / 1024 / 1024
@@ -622,9 +622,14 @@ class Trainer(object):
                         'gb_total', gb_total, priority=1600, round=1, weight=0,
                     )
 
+                    # mark step on TPUs
+                    self._xla_markstep_and_send_to_cpu()
                     logging_output = self._reduce_and_log_stats(
                         logging_outputs, sample_size, grad_norm,
                     )
+                    self._xla_markstep_and_send_to_cpu()
+                    from fairseq.metsumm import metsumm as m
+                    m('AFTER LOGGING  {}'.format(i))
 
                 # log whenever there's an XLA compilation, since these
                 # slow down training and may indicate opportunities for
@@ -665,9 +670,7 @@ class Trainer(object):
         if self._dummy_batch == "DUMMY":
             self._dummy_batch = sample
         if self.tpu:
-            import torch_xla.core.xla_model as xm
-            xm.rendezvous('valid_step')  # wait for all workers
-            xm.mark_step()
+            self._xla_markstep_and_send_to_cpu()
 
         with torch.no_grad():
             self.model.eval()
@@ -713,6 +716,8 @@ class Trainer(object):
             )
 
         # log validation stats
+        if self.tpu:
+            logging_outputs = self._xla_markstep_and_send_to_cpu(logging_outputs)
         logging_output = self._reduce_and_log_stats(logging_outputs, sample_size)
 
         return logging_output
@@ -993,7 +998,11 @@ class Trainer(object):
                 )
 
     def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
-        if grad_norm is not None:
+        # tpu-comment: grad_norm is a tensor in XLA
+        if (
+            (not torch.is_tensor(grad_norm) and grad_norm is not None)
+            or (torch.is_tensor(grad_norm) and not torch.isnan(grad_norm))
+        ):
             metrics.log_speed("ups", 1., priority=100, round=2)
             metrics.log_scalar("gnorm", grad_norm, priority=400, round=3)
             if self.args.clip_norm > 0:
@@ -1047,6 +1056,14 @@ class Trainer(object):
                 .format(self.args.distributed_rank)
             )
         self._num_xla_compiles = num_xla_compiles
+
+
+    def _xla_markstep_and_send_to_cpu(self, data=None):
+        import torch_xla.core.xla_model as xm
+        xm.mark_step()
+        if data is not None:
+            from fairseq.utils import xla_device_to_cpu
+            return xla_device_to_cpu(data)
 
 
 def _catalog_shared_params(module, memo=None, prefix=''):

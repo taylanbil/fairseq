@@ -258,13 +258,13 @@ def call_main(args, main, **kwargs):
             )
         else:
             distributed_main(args.device_id, main, args, kwargs)
-    elif getattr(args, "tpu", False) and args.distributed_world_size > 1:
+    elif getattr(args, "tpu", False):
         import torch_xla.distributed.xla_multiprocessing as xmp
         torch.multiprocessing.set_sharing_strategy("file_system")
         xmp.spawn(
             fn=distributed_main,
             args=(main, args, kwargs),
-            nprocs=8,  # use all 8 TPU cores
+            nprocs=min(args.distributed_world_size, 8),
         )
     else:
         # single GPU main

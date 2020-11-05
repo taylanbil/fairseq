@@ -91,6 +91,7 @@ def move_to_cuda(sample, device=None):
 
 
 def move_to_cpu(sample):
+
     def _move_to_cpu(tensor):
         # PyTorch has poor support for half tensors (float16) on CPU.
         # Move any such tensors to float32.
@@ -262,6 +263,9 @@ def convert_padding_direction(
 
 
 def item(tensor):
+    # tpu-comment: making this a no-op for xla devices.
+    if torch.is_tensor(tensor) and tensor.device.type == 'xla':
+        return tensor.detach()
     if hasattr(tensor, "item"):
         return tensor.item()
     if hasattr(tensor, "__getitem__"):
@@ -610,6 +614,11 @@ def tpu_data_loader(itr):
         start=getattr(itr, "n", 0),
         total=len(itr),
     )
+
+
+def xla_device_to_cpu(dat):
+    import torch_xla.core.xla_model as xm
+    return xm._maybe_convert_to_cpu(dat)
 
 
 class CudaEnvironment(object):

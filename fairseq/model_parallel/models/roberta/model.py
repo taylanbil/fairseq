@@ -84,10 +84,14 @@ class ModelParallelRobertaModel(RobertaModel):
         if classification_head_name is not None:
             features_only = True
 
+        from fairseq.metsumm import metsumm as m
+        m('BEFORE ENCODER')
         x, extra = self.encoder(src_tokens, features_only, return_all_hiddens, **kwargs)
+        m('AFTER ENCODER')
 
         if classification_head_name is not None:
             x = self.classification_heads[classification_head_name](x)
+        m('AFTER CLF HEAD')
         return x, extra
 
     def register_classification_head(self, name, num_classes=None, inner_dim=None, **kwargs):
