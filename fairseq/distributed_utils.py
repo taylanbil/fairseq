@@ -556,18 +556,21 @@ def initialize_distributed_groups(model_parallel_size, use_xla=False):
         print('NEW MP GPS', _MODEL_PARALLEL_GROUP)
         print('NEW DP GPS', _DATA_PARALLEL_GROUP)
     if (model_parallel_size, world_size) == (4, 32):
+        ord_xla = list(range(32))
+        ord_reorder=list(map(int, sorted(map(str, ord_xla))))
+        ord_reorder={o:i for (i,o) in enumerate(ord_reorder)}
         print('OLD MP GPS', _MODEL_PARALLEL_GROUP)
         print('OLD DP GPS', _DATA_PARALLEL_GROUP)
         ranks = [0,8,16,24,25,17,9,1]
         grouped_ranks = []
         for i in range(model_parallel_size):
-            grouped_ranks.append([r+i*2 for r in ranks])
+            grouped_ranks.append([ord_reorder[r+i*2] for r in ranks])
         _DATA_PARALLEL_GROUP = new_groups(grouped_ranks)
         ranks = [[0,4,6,2], [1,5,7,3]]
         grouped_ranks = []
         for i in range(4):
-            grouped_ranks.append([r+i*8 for r in ranks[0]])
-            grouped_ranks.append([r+i*8 for r in ranks[1]])
+            grouped_ranks.append([ord_reorder[r+i*8] for r in ranks[0]])
+            grouped_ranks.append([ord_reorder[r+i*8] for r in ranks[1]])
         _MODEL_PARALLEL_GROUP = new_groups(grouped_ranks)
         #logger.info('CUSTOM MP GROUP INIT DONE')
         print('CUSTOM MP GROUP INIT DONE', flush=True)
