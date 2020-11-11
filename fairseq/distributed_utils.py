@@ -197,7 +197,10 @@ def distributed_init(args):
         _USE_XLA = True
         args.device_id = xm.get_local_ordinal()
         args.distributed_rank = xm.get_ordinal()
-        xm.rendezvous('distributed_init')  # wait for all workers
+        print('RANKINFO', args.device_id, args.distributed_rank, flush=True)
+        import time
+        time.sleep(10)
+        #xm.rendezvous('distributed_init')  # wait for all workers
         xm.mark_step()
 
     if not is_master(args):
@@ -537,6 +540,40 @@ def initialize_distributed_groups(model_parallel_size, use_xla=False):
         )
         grouped_ranks.append(ranks)
     _MODEL_PARALLEL_GROUP = new_groups(grouped_ranks)
+
+    # FIXME: taylan clean this up:
+    if (model_parallel_size, world_size) == (4, 8):
+        print('OLD MP GPS', _MODEL_PARALLEL_GROUP)
+        print('OLD DP GPS', _DATA_PARALLEL_GROUP)
+        ranks = [0, 1]
+        grouped_ranks = [
+            [r+i*2 for r in ranks]
+            for i in range(model_parallel_size)
+        ]
+        _DATA_PARALLEL_GROUP = new_groups(grouped_ranks)
+        grouped_ranks = [[0,4,6,2], [1,5,7,3]]
+        _MODEL_PARALLEL_GROUP = new_groups(grouped_ranks)
+        print('NEW MP GPS', _MODEL_PARALLEL_GROUP)
+        print('NEW DP GPS', _DATA_PARALLEL_GROUP)
+    if (model_parallel_size, world_size) == (4, 32):
+        print('OLD MP GPS', _MODEL_PARALLEL_GROUP)
+        print('OLD DP GPS', _DATA_PARALLEL_GROUP)
+        ranks = [0,8,16,24,25,17,9,1]
+        grouped_ranks = []
+        for i in range(model_parallel_size):
+            grouped_ranks.append([r+i*2 for r in ranks])
+        _DATA_PARALLEL_GROUP = new_groups(grouped_ranks)
+        ranks = [[0,4,6,2], [1,5,7,3]]
+        grouped_ranks = []
+        for i in range(4):
+            grouped_ranks.append([r+i*8 for r in ranks[0]])
+            grouped_ranks.append([r+i*8 for r in ranks[1]])
+        _MODEL_PARALLEL_GROUP = new_groups(grouped_ranks)
+        #logger.info('CUSTOM MP GROUP INIT DONE')
+        print('CUSTOM MP GROUP INIT DONE', flush=True)
+        print('NEW MP GPS', _MODEL_PARALLEL_GROUP)
+        print('NEW DP GPS', _DATA_PARALLEL_GROUP)
+    # FIXME: taylan clean this up:
 
     if model_parallel_size > 1:
         logger.info(
