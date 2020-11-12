@@ -202,10 +202,13 @@ def train(args, trainer, task, epoch_itr):
     should_stop = False
     num_updates = trainer.get_num_updates()
     for i, samples in enumerate(progress):
+        break
+    for i in range(700):
         from fairseq.metsumm import metsumm as m
         m('STEP {}'.format(i))
         import torch_xla.debug.metrics as met
         import torch_xla.core.xla_model as xm
+        xm.mark_step()
         if i and not i % 10 and xm.is_master_ordinal():
             print('XLA MET REP @ STEP', i)
             print('-'*80)
