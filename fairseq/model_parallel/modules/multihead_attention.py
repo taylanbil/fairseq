@@ -238,8 +238,8 @@ class ModelParallelMultiheadAttention(nn.Module):
         )
         attn_weights = attn_weights_float.type_as(attn_weights)
 
-        with distributed_utils.fork_rng_for_model_parallel():
-            attn_probs = self.dropout_module(attn_weights)
+        #with distributed_utils.fork_rng_for_model_parallel():
+        attn_probs = self.dropout_module(attn_weights)
 
         assert v is not None
         attn = torch.bmm(attn_probs, v)
