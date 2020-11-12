@@ -111,7 +111,8 @@ class ModelParallelRobertaModel(RobertaModel):
             inner_dim or self.args.encoder_embed_dim,
             num_classes,
             self.args.pooler_activation_fn,
-            self.args.pooler_dropout,
+            #self.args.pooler_dropout,
+            0
         )
 
 
@@ -154,15 +155,15 @@ class ModelParallelRobertaClassificationHead(nn.Module):
         super().__init__()
         self.dense = ColumnParallelLinear(input_dim, inner_dim, gather_output=True)
         self.activation_fn = utils.get_activation_fn(activation_fn)
-        self.dropout = nn.Dropout(p=pooler_dropout)
+        #self.dropout = nn.Dropout(p=pooler_dropout)
         self.out_proj = nn.Linear(inner_dim, num_classes)
 
     def forward(self, features, **kwargs):
         x = features[:, 0, :]  # take <s> token (equiv. to [CLS])
-        x = self.dropout(x)
+        #x = self.dropout(x)
         x = self.dense(x)
         x = self.activation_fn(x)
-        x = self.dropout(x)
+        #x = self.dropout(x)
         x = self.out_proj(x)
         return x
 
@@ -193,9 +194,12 @@ class ModelParallelRobertaEncoder(FairseqEncoder):
             embedding_dim=args.encoder_embed_dim,
             ffn_embedding_dim=args.encoder_ffn_embed_dim,
             num_attention_heads=args.encoder_attention_heads,
-            dropout=args.dropout,
-            attention_dropout=args.attention_dropout,
-            activation_dropout=args.activation_dropout,
+            #dropout=args.dropout,
+            #attention_dropout=args.attention_dropout,
+            #activation_dropout=args.activation_dropout,
+            dropout=0,
+            attention_dropout=0,
+            activation_dropout=0,
             layerdrop=args.encoder_layerdrop,
             max_seq_len=args.max_positions,
             num_segments=0,

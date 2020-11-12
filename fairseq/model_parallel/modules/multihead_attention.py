@@ -60,9 +60,9 @@ class ModelParallelMultiheadAttention(nn.Module):
             self.num_heads_partition * self.model_parallel_size == num_heads
         ), "Number of heads must be divisible by model parallel size"
 
-        self.dropout_module = FairseqDropout(
-            dropout, module_name=self.__class__.__name__
-        )
+        #self.dropout_module = FairseqDropout(
+        #    dropout, module_name=self.__class__.__name__
+        #)
         self.head_dim = embed_dim // num_heads
         assert (
             self.head_dim * num_heads == self.embed_dim
@@ -238,11 +238,12 @@ class ModelParallelMultiheadAttention(nn.Module):
         )
         attn_weights = attn_weights_float.type_as(attn_weights)
 
-        with distributed_utils.fork_rng_for_model_parallel():
-            attn_probs = self.dropout_module(attn_weights)
+        #with distributed_utils.fork_rng_for_model_parallel():
+        #    attn_probs = self.dropout_module(attn_weights)
 
         assert v is not None
-        attn = torch.bmm(attn_probs, v)
+        #attn = torch.bmm(attn_probs, v)
+        attn = torch.bmm(attn_weights, v)
         assert list(attn.size()) == [bsz * self.num_heads_partition, tgt_len, self.head_dim]
         embed_dim_partition = embed_dim // self.model_parallel_size
         attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim_partition)
