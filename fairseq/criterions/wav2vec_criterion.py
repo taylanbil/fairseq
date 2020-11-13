@@ -68,7 +68,11 @@ class Wav2vecCriterion(FairseqCriterion):
             # tpu-comment: since dynamic shapes lead to recompilations on xla,
             # we don't shrink tensors using mask_indices.
             # Instead, we use mask indices to adjust loss.
-            mi = sample['net_input']['mask_indices'].reshape(logits.size(0))
+            mi = (
+                sample['net_input']['mask_indices']
+                .transpose(0, 1)  # logits are transposed in `model.get_logits`
+                .reshape(logits.size(0))
+            )
             loss = (loss * mi).sum() if reduce else (loss * mi)
 
         if 'sample_size' in sample and self.infonce:

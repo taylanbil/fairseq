@@ -450,7 +450,7 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         return x, mask_indices
 
-    def sample_negatives(self, y, num):
+    def sample_negatives(self, y, num, padding_count=None):
 
         if self.n_negatives == 0 and self.cross_sample_negatives == 0:
             return y.new(0)
@@ -458,8 +458,9 @@ class Wav2Vec2Model(BaseFairseqModel):
         bsz, tsz, fsz = y.shape
         y = y.view(-1, fsz)  # BTC => (BxT)C
 
+        # FIXME: what happens if padding_count is specified?
         cross_high = tsz * bsz
-        high = tsz
+        high = tsz - (padding_count or 0)
         with torch.no_grad():
             assert high > 1, f"{bsz,tsz,fsz}"
 
@@ -529,6 +530,7 @@ class Wav2Vec2Model(BaseFairseqModel):
     def forward(
         self, source, padding_mask=None, mask=True, features_only=False,
         mask_indices=None, mask_channel_indices=None,
+        padding_count=None,
     ):
 
         if self.feature_grad_mult > 0:
@@ -608,11 +610,15 @@ class Wav2Vec2Model(BaseFairseqModel):
 
             if self.negatives_from_everywhere:
                 neg_cands, *_ = self.quantizer(unmasked_features, produce_targets=False)
-                negs, _ = self.sample_negatives(neg_cands, y.size(1))
+                negs, _ = self.sample_negatives(
+                    neg_cands, y.size(1), padding_count=padding_count,
+                )
                 negs = self.project_q(negs)
 
             else:
-                negs, _ = self.sample_negatives(y, y.size(1))
+                negs, _ = self.sample_negatives(
+                    y, y.size(1), padding_count=padding_count,
+                )
 
             if self.codebook_negatives > 0:
                 cb_negs = self.quantizer.sample_from_codebook(
@@ -627,10 +633,15 @@ class Wav2Vec2Model(BaseFairseqModel):
             y = self.project_q(y)
 
             if self.negatives_from_everywhere:
-                negs, _ = self.sample_negatives(unmasked_features, y.size(1))
+                negs, _ = self.sample_negatives(
+                    unmasked_features, y.size(1),
+                    padding_count=padding_count,
+                )
                 negs = self.project_q(negs)
             else:
-                negs, _ = self.sample_negatives(y, y.size(1))
+                negs, _ = self.sample_negatives(
+                    y, y.size(1), padding_count=padding_count,
+                )
 
         if not is_xla_tensor(x):
             # tpu-comment: reducing the size in a dynamic way causes

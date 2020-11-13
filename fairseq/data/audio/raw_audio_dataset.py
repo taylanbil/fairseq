@@ -181,6 +181,9 @@ class RawAudioDataset(FairseqDataset):
                 padding_mask_reshaped.size(0), T, -1
             )
             padding_mask_reshaped = padding_mask_reshaped.all(-1)
+            input['padding_count'] = (
+                padding_mask_reshaped.sum(-1).max().item()
+            )
             mask_indices, mask_channel_indices = self._compute_mask_indices(
                 (B, T, self._C), padding_mask_reshaped,
             )
