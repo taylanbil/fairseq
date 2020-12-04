@@ -66,7 +66,7 @@ def main(cfg: DictConfig) -> None:
     task = tasks.setup_task(cfg.task)
     # Load valid dataset (we load training data below, based on the latest checkpoint)
     for valid_sub_split in cfg.dataset.valid_subset.split(","):
-        task.load_dataset(valid_sub_split, combine=False, epoch=1)
+        task.load_dataset(valid_sub_split, combine=False, epoch=1, tpu=cfg.common.tpu)
 
     assert cfg.criterion, "Please specify criterion to train a model"
 
@@ -120,7 +120,7 @@ def main(cfg: DictConfig) -> None:
         # don't cache epoch iterators for sharded datasets
         disable_iterator_cache=task.has_sharded_data("train"),
     )
-    if args.tpu:
+    if cfg.common.tpu:
         import torch_xla.core.xla_model as xm
         xm.rendezvous("load_checkpoint")  # wait for all workers
 

@@ -86,6 +86,12 @@ class AudioPretrainingConfig(FairseqDataclass):
             "adds 'prev_output_tokens' to input and appends eos to target"
         },
     )
+    num_batch_buckets: int = field(
+        default=0,
+        metadata={
+            "help": "number of buckets"
+        },
+    )
 
 
 @register_task("audio_pretraining", dataclass=AudioPretrainingConfig)
@@ -123,7 +129,8 @@ class AudioPretrainingTask(FairseqTask):
 
         return cls(cfg, target_dictionary=target_dictionary)
 
-    def load_dataset(self, split: str, task_cfg: FairseqDataclass = None, **kwargs):
+    def load_dataset(self, split: str, task_cfg: FairseqDataclass = None, tpu: bool = True, **kwargs):
+        print("TPU: ", tpu)
         data_path = self.cfg.data
         task_cfg = task_cfg or self.cfg
 
@@ -141,8 +148,8 @@ class AudioPretrainingTask(FairseqTask):
             min_length=self.cfg.min_sample_size,
             pad=task_cfg.labels is not None or task_cfg.enable_padding,
             normalize=task_cfg.normalize,
-            num_batch_buckets=self.cfg.num_batch_buckets or int(self.cfg.tpu),
-            compute_mask_indices=self.cfg.tpu,
+            num_buckets=self.cfg.num_batch_buckets or int(tpu),
+            compute_mask_indices=tpu,
         )
 
         if task_cfg.labels:

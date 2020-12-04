@@ -41,7 +41,7 @@ class Wav2vecCriterion(FairseqCriterion):
         self.loss_weights = loss_weights
         self.log_keys = [] if log_keys is None else log_keys
 
-    def forward(self, model, sample, reduce=True):
+    def forward(self, model, sample, reduce=True, log_pred=False):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
