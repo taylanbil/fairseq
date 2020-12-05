@@ -431,8 +431,9 @@ class Trainer(object):
     @metrics.aggregate("train")
     def train_step(self, samples, raise_oom=False):
         """Do forward, backward and parameter update."""
-        with self.set_seed_for_train_step():
-            return self._train_step(samples, raise_oom=raise_oom)
+        #with self.set_seed_for_train_step():
+        #    return self._train_step(samples, raise_oom=raise_oom)
+        return self._train_step(samples, raise_oom=raise_oom)
 
     def _train_step(self, samples, raise_oom=False):
         if self._dummy_batch == "DUMMY":

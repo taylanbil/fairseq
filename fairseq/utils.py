@@ -513,6 +513,7 @@ def get_rng_state():
 
 
 def set_rng_state(state):
+    return
     torch.set_rng_state(state['torch_rng_state'])
     if xm is not None:
         xm.set_rng_state(state['xla_rng_state'])
@@ -523,6 +524,7 @@ def set_rng_state(state):
 class set_torch_seed(object):
 
     def __init__(self, seed):
+        return
         assert isinstance(seed, int)
         self.rng_state = get_rng_state()
 
@@ -536,6 +538,7 @@ class set_torch_seed(object):
         return self
 
     def __exit__(self, *exc):
+        return
         set_rng_state(self.rng_state)
 
 
