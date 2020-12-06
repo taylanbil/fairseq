@@ -534,7 +534,7 @@ class Wav2Vec2Model(BaseFairseqModel):
             y = self.project_q(y)
 
             if self.negatives_from_everywhere:
-                neg_cands, *_ = self.quantizer(unmasked_features, produce_targets=False)
+                neg_cands = (self.quantizer(unmasked_features, produce_targets=False))["x"]
                 negs, _ = self.sample_negatives(
                     neg_cands, y.size(1), padding_count=padding_count,
                 )
