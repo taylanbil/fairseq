@@ -22,6 +22,7 @@ class FairseqDropout(nn.Module):
         self.apply_during_inference = False
 
     def forward(self, x, inplace: bool = False):
+        return x
         if self.training or self.apply_during_inference:
             return F.dropout(x, p=self.p, training=True, inplace=inplace)
         else:
