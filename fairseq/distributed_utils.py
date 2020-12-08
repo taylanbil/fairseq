@@ -330,7 +330,7 @@ def call_main(cfg: FairseqConfig, main, **kwargs):
             # tpu-comment:
             #   8 devices in one TPU VM, is the max processes to be spawned.
             #   The rest is driven by xm.distributed.xla_dist
-            nprocs=min(args.distributed_world_size, 8),
+            nprocs=min(cfg.distributed_training.distributed_world_size, 8),
         )
     else:
         # single GPU main
