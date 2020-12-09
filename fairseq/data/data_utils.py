@@ -362,7 +362,6 @@ def compute_mask_indices(
     no_overlap: bool = False,
     min_space: int = 0,
 ) -> np.ndarray:
-#) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Computes random mask spans for a given shape
 

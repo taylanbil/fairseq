@@ -529,7 +529,6 @@ class Trainer(object):
             try:
                 with maybe_no_sync():
                     # forward and backward
-
                     loss, sample_size_i, logging_output = self.task.train_step(
                         sample=sample,
                         model=self.model,
@@ -639,6 +638,7 @@ class Trainer(object):
             with torch.autograd.profiler.record_function("optimizer"):
                 # take an optimization step
                 self.optimizer.step()
+
         except FloatingPointError:
             # re-run the forward and backward pass with hooks attached to print
             # out where it fails
@@ -686,8 +686,7 @@ class Trainer(object):
 
             if self.tpu:
                 # mark step on TPUs
-                import torch_xla.core.xla_model as xm
-                xm.mark_step()
+                self._xla_markstep_and_send_to_cpu()
 
                 # only log stats every log_interval steps
                 # this causes wps to be misreported when log_interval > 1
@@ -765,7 +764,6 @@ class Trainer(object):
         if self.tpu:
             import torch_xla.core.xla_model as xm
             xm.rendezvous("valid_step")  # wait for all workers
-            self._xla_markstep_and_send_to_cpu()
 
         with torch.no_grad():
             self.model.eval()

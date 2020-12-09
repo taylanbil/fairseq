@@ -60,6 +60,7 @@ class AudioPretrainingConfig(FairseqDataclass):
     min_sample_size: Optional[int] = field(
         default=None, metadata={"help": "min sample size to crop to for batching"}
     )
+
     # Options for reporting WER metrics during validation. Only applicable to
     # Seq2Seq models during fine-tuning
     eval_wer: bool = field(
@@ -150,6 +151,7 @@ class AudioPretrainingTask(FairseqTask):
             normalize=task_cfg.normalize,
             num_buckets=self.cfg.num_batch_buckets or int(tpu),
             compute_mask_indices=tpu,
+            # FIXME: how to pass down the args here?
         )
 
         if task_cfg.labels:
