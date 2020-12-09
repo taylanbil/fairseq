@@ -255,7 +255,6 @@ def distributed_init(cfg: FairseqConfig):
         cfg.distributed_training.device_id = xm.get_local_ordinal()
         cfg.distributed_training.distributed_rank = xm.get_ordinal()
         xm.rendezvous("distributed_init")  # wait for all workers
-        xm.mark_step()
 
     if is_master(cfg.distributed_training):
         logging.getLogger().setLevel(logging.INFO)

@@ -176,19 +176,6 @@ def should_stop_early(cfg: DictConfig, valid_loss: float) -> bool:
             return False
 
 
-def tpu_data_loader(args, itr):
-    import torch_xla.core.xla_model as xm
-    import torch_xla.distributed.parallel_loader as pl
-
-    xm.rendezvous("tpu_data_loader")  # wait for all workers
-    device = utils.get_tpu_device(args)
-    return iterators.CountingIterator(
-        pl.ParallelLoader(itr, [device]).per_device_loader(device),
-        start=getattr(itr, "n", 0),
-        total=len(itr),
-    )
-
-
 @metrics.aggregate("train")
 def train(
     cfg: DictConfig, trainer: Trainer, task: tasks.FairseqTask, epoch_itr

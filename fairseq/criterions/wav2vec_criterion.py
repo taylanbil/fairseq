@@ -41,7 +41,7 @@ class Wav2vecCriterion(FairseqCriterion):
         self.loss_weights = loss_weights
         self.log_keys = [] if log_keys is None else log_keys
 
-    def forward(self, model, sample, reduce=True, log_pred=False):
+    def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -52,7 +52,7 @@ class Wav2vecCriterion(FairseqCriterion):
         net_output = model(**sample["net_input"])
         logits = model.get_logits(net_output).float()
         target = model.get_targets(sample, net_output)
-        xla = is_xla_tensor(logits)
+        self.xla = is_xla_tensor(logits)
 
         # XXX: handle weights on xla.
         weights = None
@@ -71,7 +71,7 @@ class Wav2vecCriterion(FairseqCriterion):
                 logits, target.float(), weights, reduction=reduction
             )
 
-        if xla:
+        if self.xla:
             # tpu-comment: since dynamic shapes lead to recompilations on xla,
             # we don't shrink tensors using mask_indices.
             # Instead, we use mask indices to adjust loss.
@@ -107,7 +107,7 @@ class Wav2vecCriterion(FairseqCriterion):
                     losses.append(p)
 
         logging_output = {
-            "loss": loss.item() if reduce else loss,
+            "loss": loss.item() if (reduce and not self.xla) else loss.detach(),
             "ntokens": sample_size,
             "nsentences": sample["id"].numel(),
             "sample_size": sample_size,
@@ -122,7 +122,7 @@ class Wav2vecCriterion(FairseqCriterion):
 
         if len(losses) > 1:
             for i, l in enumerate(losses):
-                logging_output[f"loss_{i}"] = l.item()
+                logging_output[f"loss_{i}"] = l.item() if not self.xla else l.detach()
 
         if self.infonce:
             with torch.no_grad():
@@ -146,9 +146,6 @@ class Wav2vecCriterion(FairseqCriterion):
                 logging_output["correct"] = corr
                 logging_output["count"] = count
 
-        if log_pred and not is_xla_tensor(logits):
-            logging_output['logits'] = logits.cpu().numpy()
-            logging_output['target'] = target.cpu().numpy()
         return loss, sample_size, logging_output
 
     @staticmethod
@@ -211,4 +208,6 @@ class Wav2vecCriterion(FairseqCriterion):
         across workers prior to calling `reduce_metrics`. Setting this
         to True will improves distributed training speed.
         """
-        return True
+        # XXX: Gather based reduction not implemented for xla yet.
+        # So we fall to sum based reduction for xla.
+        return self.xla

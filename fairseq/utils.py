@@ -661,6 +661,8 @@ def tpu_data_loader(itr):
         start=getattr(itr, "n", 0),
         total=len(itr),
     )
+
+
 def is_xla_tensor(tensor):
     return torch.is_tensor(tensor) and tensor.device.type == 'xla'
 

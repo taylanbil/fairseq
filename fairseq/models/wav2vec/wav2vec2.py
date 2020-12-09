@@ -534,7 +534,9 @@ class Wav2Vec2Model(BaseFairseqModel):
             y = self.project_q(y)
 
             if self.negatives_from_everywhere:
-                neg_cands = (self.quantizer(unmasked_features, produce_targets=False))["x"]
+                neg_cands = self.quantizer(
+                    unmasked_features, produce_targets=False
+                )["x"]
                 negs, _ = self.sample_negatives(
                     neg_cands, y.size(1), padding_count=padding_count,
                 )
@@ -576,6 +578,7 @@ class Wav2Vec2Model(BaseFairseqModel):
         if self.target_glu:
             y = self.target_glu(y)
             negs = self.target_glu(negs)
+
         x = self.final_proj(x)
         x = self.compute_preds(x, y, negs)
 
