@@ -63,7 +63,7 @@ class Wav2vecCriterion(FairseqCriterion):
 
         losses = []
 
-        reduction = "none" if ((not reduce) or xla) else "sum"
+        reduction = "none" if ((not reduce) or self.xla) else "sum"
         if self.infonce:
             loss = F.cross_entropy(logits, target, reduction=reduction)
         else:
@@ -201,8 +201,10 @@ class Wav2vecCriterion(FairseqCriterion):
                 else:
                     metrics.log_scalar(k, val / len(logging_outputs), round=3)
 
-    @staticmethod
-    def logging_outputs_can_be_summed() -> bool:
+    # FIXME: revert when gather based xla reduction is implemented
+    #@staticmethod
+    #def logging_outputs_can_be_summed() -> bool:
+    def logging_outputs_can_be_summed(self) -> bool:
         """
         Whether the logging outputs returned by `forward` can be summed
         across workers prior to calling `reduce_metrics`. Setting this
