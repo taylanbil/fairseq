@@ -128,6 +128,9 @@ class Trainer(object):
         self._start_time = time.time()
         self._previous_training_time = 0
         self._cumulative_training_time = None
+        self._tpu_rng_seed_first_warning = (
+            self.cfg.distributed_training.distributed_rank == 0
+        )
 
     def reinitialize(self):
         """Reinitialize the Trainer, typically after model params change."""
@@ -686,7 +689,8 @@ class Trainer(object):
 
             if self.tpu:
                 # mark step on TPUs
-                self._xla_markstep_and_send_to_cpu()
+                import torch_xla.core.xla_model as xm
+                xm.mark_step()
 
                 # only log stats every log_interval steps
                 # this causes wps to be misreported when log_interval > 1
@@ -710,17 +714,12 @@ class Trainer(object):
                         round=1,
                         weight=0,
                     )
-                    self._xla_markstep_and_send_to_cpu()
+                    logging_outputs = self._xla_markstep_and_send_to_cpu(logging_outputs)
                     logging_output = self._reduce_and_log_stats(
                         logging_outputs,
                         sample_size,
                         grad_norm,
                     )
-                    # FIXME: taylan when I put step closure, logging outputs is shrunk..
-                    #xm.add_step_closure(
-                    #    self._reduce_and_log_stats,
-                    #    args=(logging_outputs, sample_size, grad_norm)
-                    #)
 
                 # log whenever there's an XLA compilation, since these
                 # slow down training and may indicate opportunities for
@@ -935,6 +934,8 @@ class Trainer(object):
                     )
             else:
                 sample = utils.move_to_cuda(sample)
+        if self.tpu:
+            sample = utils.move_to_tpu(sample)
 
         def apply_half(t):
             if t.dtype is torch.float32:
@@ -960,6 +961,17 @@ class Trainer(object):
     def _set_seed(self):
         # Set seed based on args.seed and the update number so that we get
         # reproducible results when resuming from checkpoints
+
+        # FIXME: disabled on tpus; re-enable when device->host transfers are fast.
+        if self.tpu:
+            if self._tpu_rng_seed_first_warning:
+                self._tpu_rng_seed_first_warning = False
+                logger.warning(
+                    "Due to TPU device to host transfers being slow, "
+                    "setting seed is disabled."
+                )
+            return
+
         seed = self.cfg.common.seed + self.get_num_updates()
         utils.set_torch_seed(seed)
 
@@ -1149,6 +1161,8 @@ class Trainer(object):
             return logging_output
 
     def _check_xla_compilation(self):
+        if self.cfg.distributed_training.distributed_rank:
+            return
         import torch_xla.debug.metrics as met
 
         compile_stats = met.metric_data("CompileTime")
@@ -1157,10 +1171,8 @@ class Trainer(object):
         num_xla_compiles = compile_stats[0]
         if num_xla_compiles > self._num_xla_compiles:
             logger.warning(
-                "XLA compilation detected on device #{}; too many of these can lead "
-                "to slow training, but we expect a few in the beginning".format(
-                    self.cfg.distributed_training.distributed_rank
-                )
+                "XLA compilation detected; too many of these can lead "
+                "to slow training, but we expect a few in the beginning"
             )
         self._num_xla_compiles = num_xla_compiles
 

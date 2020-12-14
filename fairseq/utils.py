@@ -123,6 +123,17 @@ def move_to_cpu(sample):
     return apply_to_sample(_move_to_cpu, sample)
 
 
+def move_to_tpu(sample):
+
+    import torch_xla.core.xla_model as xm
+    device = xm.xla_device()
+
+    def _move_to_tpu(tensor):
+        return tensor.to(device)
+
+    return apply_to_sample(_move_to_tpu, sample)
+
+
 def get_incremental_state(
     module: MultiheadAttention,
     incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],

@@ -12,7 +12,7 @@ import torch
 from argparse import Namespace
 from dataclasses import dataclass, field
 from typing import Optional, Any
-from omegaconf import MISSING
+from omegaconf import MISSING, II
 
 from fairseq.data import AddTargetDataset, Dictionary, FileAudioDataset, encoders
 from fairseq.data.data_utils import post_process
@@ -93,6 +93,32 @@ class AudioPretrainingConfig(FairseqDataclass):
             "help": "number of buckets"
         },
     )
+    precompute_mask_indices: bool = field(
+        default=False,
+        metadata={
+            "help": "flag to compute mask indices in data preparation.",
+        },
+    )
+
+    # The following are needed to precompute mask and mask channel indices
+    #   before model's forward.
+    mask_length: int = II("model.mask_length")
+    mask_prob: float = II("model.mask_prob")
+    mask_selection: str = II("model.mask_selection")
+    mask_other: float = II("model.mask_other")
+    no_mask_overlap: bool = II("model.no_mask_overlap")
+    mask_min_space: int = II("model.mask_min_space")
+    mask_channel_length: int = II("model.mask_channel_length")
+    mask_channel_prob: float = II("model.mask_channel_prob")
+    mask_channel_selection: str = II("model.mask_channel_selection")
+    mask_channel_other: float = II("model.mask_channel_other")
+    no_mask_channel_overlap: bool = II("model.no_mask_channel_overlap")
+    mask_channel_min_space: int = II("model.mask_channel_min_space")
+
+    conv_feature_layers: str = II("model.conv_feature_layers")
+    encoder_embed_dim: int = II("model.encoder_embed_dim")
+
+    tpu: bool = II("common.tpu")
 
 
 @register_task("audio_pretraining", dataclass=AudioPretrainingConfig)
@@ -130,8 +156,26 @@ class AudioPretrainingTask(FairseqTask):
 
         return cls(cfg, target_dictionary=target_dictionary)
 
-    def load_dataset(self, split: str, task_cfg: FairseqDataclass = None, tpu: bool = True, **kwargs):
-        print("TPU: ", tpu)
+    def _get_mask_precompute_kwargs(self, cfg):
+        args = [
+            'mask_length',
+            'mask_prob',
+            'mask_selection',
+            'mask_other',
+            'no_mask_overlap',
+            'mask_min_space',
+            'mask_channel_length',
+            'mask_channel_prob',
+            'mask_channel_selection',
+            'mask_channel_other',
+            'no_mask_channel_overlap',
+            'mask_channel_min_space',
+            'encoder_embed_dim',
+            'conv_feature_layers',
+        ]
+        return {arg: cfg[arg] for arg in args}
+
+    def load_dataset(self, split: str, task_cfg: FairseqDataclass = None, **kwargs):
         data_path = self.cfg.data
         task_cfg = task_cfg or self.cfg
 
@@ -149,9 +193,11 @@ class AudioPretrainingTask(FairseqTask):
             min_length=self.cfg.min_sample_size,
             pad=task_cfg.labels is not None or task_cfg.enable_padding,
             normalize=task_cfg.normalize,
-            num_buckets=self.cfg.num_batch_buckets or int(tpu),
-            compute_mask_indices=tpu,
-            # FIXME: how to pass down the args here?
+            num_buckets=self.cfg.num_batch_buckets or int(self.cfg.tpu),
+            compute_mask_indices=(
+                self.cfg.precompute_mask_indices or self.cfg.tpu
+            ),
+            **self._get_mask_precompute_kwargs(task_cfg),
         )
 
         if task_cfg.labels:

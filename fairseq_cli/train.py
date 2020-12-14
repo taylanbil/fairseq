@@ -66,7 +66,7 @@ def main(cfg: DictConfig) -> None:
     task = tasks.setup_task(cfg.task)
     # Load valid dataset (we load training data below, based on the latest checkpoint)
     for valid_sub_split in cfg.dataset.valid_subset.split(","):
-        task.load_dataset(valid_sub_split, combine=False, epoch=1, tpu=cfg.common.tpu)
+        task.load_dataset(valid_sub_split, combine=False, epoch=1)
 
     assert cfg.criterion, "Please specify criterion to train a model"
 

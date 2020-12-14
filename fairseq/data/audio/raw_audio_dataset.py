@@ -30,7 +30,7 @@ class RawAudioDataset(FairseqDataset):
         pad=False,
         normalize=False,
         compute_mask_indices=False,
-        args=None,
+        **mask_compute_kwargs,
     ):
         super().__init__()
 
@@ -46,10 +46,12 @@ class RawAudioDataset(FairseqDataset):
         self.normalize = normalize
         self.compute_mask_indices = compute_mask_indices
         if self.compute_mask_indices:
-            self.args = args
+            self.mask_compute_kwargs = mask_compute_kwargs
             self._features_size_map = {}
-            self._C = self.args.encoder_embed_dim
-            self._conv_feature_layers = eval(self.args.conv_feature_layers)
+            self._C = mask_compute_kwargs['encoder_embed_dim']
+            self._conv_feature_layers = eval(
+                mask_compute_kwargs['conv_feature_layers']
+            )
 
     def __getitem__(self, index):
         raise NotImplementedError()
@@ -84,29 +86,29 @@ class RawAudioDataset(FairseqDataset):
     def _compute_mask_indices(self, dims, padding_mask):
         B, T, C = dims
         mask_indices, mask_channel_indices = None, None
-        if self.args.mask_prob > 0:
+        if self.mask_compute_kwargs['mask_prob'] > 0:
             mask_indices = compute_mask_indices(
                 (B, T),
                 padding_mask,
-                self.args.mask_prob,
-                self.args.mask_length,
-                self.args.mask_selection,
-                self.args.mask_other,
+                self.mask_compute_kwargs['mask_prob'],
+                self.mask_compute_kwargs['mask_length'],
+                self.mask_compute_kwargs['mask_selection'],
+                self.mask_compute_kwargs['mask_other'],
                 min_masks=2,
-                no_overlap=self.args.no_mask_overlap,
-                min_space=self.args.mask_min_space,
+                no_overlap=self.mask_compute_kwargs['no_mask_overlap'],
+                min_space=self.mask_compute_kwargs['mask_min_space'],
             )
             mask_indices = torch.from_numpy(mask_indices)
-        if self.args.mask_channel_prob > 0:
+        if self.mask_compute_kwargs['mask_channel_prob'] > 0:
             mask_channel_indices = compute_mask_indices(
                 (B, C),
                 None,
-                self.args.mask_channel_prob,
-                self.args.mask_channel_length,
-                self.args.mask_channel_selection,
-                self.args.mask_channel_other,
-                no_overlap=self.args.no_mask_channel_overlap,
-                min_space=self.args.mask_channel_min_space,
+                self.mask_compute_kwargs['mask_channel_prob'],
+                self.mask_compute_kwargs['mask_channel_length'],
+                self.mask_compute_kwargs['mask_channel_selection'],
+                self.mask_compute_kwargs['mask_channel_other'],
+                no_overlap=self.mask_compute_kwargs['no_mask_channel_overlap'],
+                min_space=self.mask_compute_kwargs['mask_channel_min_space'],
             )
             mask_channel_indices = (
                 torch.from_numpy(mask_channel_indices)
@@ -235,9 +237,9 @@ class FileAudioDataset(RawAudioDataset):
         min_length=0,
         pad=False,
         normalize=False,
-        compute_mask_indices=False,
-        args=None,
         num_buckets=0,
+        compute_mask_indices=False,
+        **mask_compute_kwargs,
     ):
         super().__init__(
             sample_rate=sample_rate,
@@ -248,7 +250,7 @@ class FileAudioDataset(RawAudioDataset):
             pad=pad,
             normalize=normalize,
             compute_mask_indices=compute_mask_indices,
-            args=args,
+            **mask_compute_kwargs,
         )
 
         self.fnames = []

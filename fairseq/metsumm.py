@@ -1,5 +1,6 @@
 # FIXME: remove this file
 def metsumm(stepno=''):
+    import torch_xla.core.xla_model as xm
     if hasattr(metsumm, 'STEPNO'):
         metsumm.STEPNO += stepno.lower()=="before forward"
     else:
@@ -11,7 +12,7 @@ def metsumm(stepno=''):
             if 'CompileTime' in line or 'aten::' in line:
                 key = line.split()[-1]
                 value = x[i+1].split()[-1]
-                print('step {}-{}, key {}, value {}'.format(
+                xm.master_print('step {}-{}, key {}, value {}'.format(
                     metsumm.STEPNO, stepno, key, value)
                 )
     except RuntimeError:
