@@ -375,14 +375,27 @@ class Wav2Vec2Model(BaseFairseqModel):
 
         return x, mask_indices
 
-    def sample_negatives(self, y, num, padding_count=None):
-
+    def sample_negatives(
+        self, y, num, padding_count=None, neg_idxs=None
+    ):
         if self.n_negatives == 0 and self.cross_sample_negatives == 0:
             return y.new(0)
-
         bsz, tsz, fsz = y.shape
         y = y.view(-1, fsz)  # BTC => (BxT)C
+        if neg_idxs is None:
+            neg_idxs = self._sample_negative_indices(
+                (bsz, tsz, fsz), num, padding_count=padding_count,
+            )
+        negs = y[neg_idxs.view(-1)]
+        negs = negs.view(
+            bsz, num, self.n_negatives + self.cross_sample_negatives, fsz
+        ).permute(
+            2, 0, 1, 3
+        )  # to NxBxTxC
+        return negs, neg_idxs
 
+    def _sample_negative_indices(self, shape, num, padding_count=None):
+        bsz, tsz, fsz = shape
         # FIXME: what happens if padding_count is specified?
         cross_high = tsz * bsz
         high = tsz - (padding_count or 0)
@@ -426,13 +439,7 @@ class Wav2Vec2Model(BaseFairseqModel):
         if self.cross_sample_negatives > 0 and self.n_negatives > 0:
             neg_idxs = torch.cat([neg_idxs, cross_neg_idxs], dim=1)
 
-        negs = y[neg_idxs.view(-1)]
-        negs = negs.view(
-            bsz, num, self.n_negatives + self.cross_sample_negatives, fsz
-        ).permute(
-            2, 0, 1, 3
-        )  # to NxBxTxC
-        return negs, neg_idxs
+        return neg_idxs
 
     def compute_preds(self, x, y, negatives):
 
@@ -459,7 +466,7 @@ class Wav2Vec2Model(BaseFairseqModel):
     def forward(
         self, source, padding_mask=None, mask=True, features_only=False,
         mask_indices=None, mask_channel_indices=None,
-        padding_count=None,
+        padding_count=None, neg_idxs=None,
     ):
 
         if self.feature_grad_mult > 0:
@@ -470,7 +477,8 @@ class Wav2Vec2Model(BaseFairseqModel):
             with torch.no_grad():
                 features = self.feature_extractor(source)
 
-        features_pen = features.float().pow(2).mean()
+        features_pen = features.float().mean()
+        #features_pen = features.float().pow(2).mean()
 
         features = features.transpose(1, 2)
         features = self.layer_norm(features)
@@ -543,12 +551,14 @@ class Wav2Vec2Model(BaseFairseqModel):
                 )["x"]
                 negs, _ = self.sample_negatives(
                     neg_cands, y.size(1), padding_count=padding_count,
+                    neg_idxs=neg_idxs,
                 )
                 negs = self.project_q(negs)
 
             else:
                 negs, _ = self.sample_negatives(
                     y, y.size(1), padding_count=padding_count,
+                    neg_idxs=neg_idxs,
                 )
 
             if self.codebook_negatives > 0:
@@ -567,11 +577,13 @@ class Wav2Vec2Model(BaseFairseqModel):
                 negs, _ = self.sample_negatives(
                     unmasked_features, y.size(1),
                     padding_count=padding_count,
+                    neg_idxs=neg_idxs,
                 )
                 negs = self.project_q(negs)
             else:
                 negs, _ = self.sample_negatives(
                     y, y.size(1), padding_count=padding_count,
+                    neg_idxs=neg_idxs,
                 )
 
         if not is_xla_tensor(x):

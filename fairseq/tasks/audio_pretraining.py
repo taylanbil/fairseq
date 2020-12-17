@@ -114,9 +114,21 @@ class AudioPretrainingConfig(FairseqDataclass):
     mask_channel_other: float = II("model.mask_channel_other")
     no_mask_channel_overlap: bool = II("model.no_mask_channel_overlap")
     mask_channel_min_space: int = II("model.mask_channel_min_space")
-
     conv_feature_layers: str = II("model.conv_feature_layers")
     encoder_embed_dim: int = II("model.encoder_embed_dim")
+
+    presample_negatives: bool = field(
+        default=False,
+        metadata={
+            "help":(
+                "flag to sample negatives in data preparation. "
+                "precomputing mask_indices must be enabled."
+            )
+        },
+    )
+    final_dim: int = II("model.final_dim")
+    n_negatives: int = II("model.num_negatives")
+    cross_sample_negatives: int = II("model.cross_sample_negatives")
 
     tpu: bool = II("common.tpu")
 
@@ -172,10 +184,24 @@ class AudioPretrainingTask(FairseqTask):
             'mask_channel_min_space',
             'encoder_embed_dim',
             'conv_feature_layers',
+            'presample_negatives',
         ]
-        return {arg: cfg[arg] for arg in args}
+        kwargs = {arg: cfg[arg] for arg in args}
+        if self.cfg.tpu:
+            kwargs['presample_negatives'] = True
+            kwargs.update(
+                {
+                    arg: cfg[arg]
+                    for arg in [
+                        'n_negatives', 'cross_sample_negatives', 'final_dim',
+                    ]
+                }
+            )
+        return kwargs
 
-    def load_dataset(self, split: str, task_cfg: FairseqDataclass = None, **kwargs):
+    def load_dataset(
+        self, split: str, task_cfg: FairseqDataclass = None, **kwargs
+    ):
         data_path = self.cfg.data
         task_cfg = task_cfg or self.cfg
 
