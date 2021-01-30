@@ -285,6 +285,8 @@ def validate_and_save(
     valid_losses = [None]
     if do_validate:
         valid_losses = validate(cfg, trainer, task, epoch_itr, valid_subsets)
+        import torch_xla.core.xla_model as xm
+        xm.mark_step()
 
     # Stopping conditions
     should_stop = (
@@ -354,14 +356,7 @@ def validate(
         # create a new root metrics aggregator so validation metrics
         # don't pollute other aggregators (e.g., train meters)
         with metrics.aggregate(new_root=True) as agg:
-            for i, sample in enumerate(progress):
-                if cfg.common.tpu and i == len(progress)-1:
-                    import torch_xla.core.xla_model as xm
-                    print(
-                        'ORDINAL {}: SKIPPING sample {}, proglen {}'.format(
-                            xm.get_ordinal(), i, len(progress))
-                    )
-                    break
+            for sample in progress:
                 trainer.valid_step(sample)
 
         # log validation stats
